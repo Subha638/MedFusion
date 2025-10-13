@@ -10,8 +10,11 @@ def load_csv(file_name):
     try:
         df = pd.read_csv(file_name)
         df.columns = [c.strip().title() for c in df.columns]
+        # Strip spaces and lowercase for disease matching
+        if 'Disease' in df.columns:
+            df['Disease'] = df['Disease'].astype(str).str.strip().str.lower()
         for col in df.columns:
-            if df[col].dtype == object:
+            if df[col].dtype == object and col != 'Disease':
                 df[col] = df[col].astype(str).str.strip()
         return df
     except FileNotFoundError:
@@ -19,13 +22,15 @@ def load_csv(file_name):
         return None
 
 # Load all CSV files
-symtoms_df = load_csv("symtoms_df.csv")  # Symptoms
-workout_df = load_csv("workout_df.csv")  # Workout
-precautions_df = load_csv("precautions_df.csv")  # Precautions
-diets_df = load_csv("diets.csv")  # Diet
-medications_df = load_csv("medications.csv")  # Medications
+symtoms_df = load_csv("symtoms_df.csv")
+workout_df = load_csv("workout_df.csv")
+precautions_df = load_csv("precautions_df.csv")
+diets_df = load_csv("diets.csv")
+medications_df = load_csv("medications.csv")
 
+# Make disease names lowercase for matching
 if symtoms_df is not None:
+    symtoms_df['Disease'] = symtoms_df['Disease'].astype(str).str.strip().str.lower()
     symptom_cols = ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
     all_symptoms = pd.unique(symtoms_df[symptom_cols].values.ravel())
     all_symptoms = sorted([s for s in all_symptoms if pd.notna(s)])
@@ -66,16 +71,15 @@ if symtoms_df is not None:
             ]
 
         possible_diseases = diseases_df['Disease'].unique() if not diseases_df.empty else ["No disease found"]
-        st.success(f"Possible diseases: {', '.join(possible_diseases)}")
+        st.success(f"Possible diseases: {', '.join([d.title() for d in possible_diseases])}")
 
         # ----------------- RECOMMENDATIONS -----------------
         for disease in possible_diseases:
-            st.subheader(f"{disease}")
+            st.subheader(f"{disease.title()}")
 
-            # Function to safely get recommendation text
             def get_rec_text(df, col):
                 if df is not None:
-                    rec = df[df['Disease'].str.lower() == disease.lower()]
+                    rec = df[df['Disease'] == disease]
                     if not rec.empty and col in rec.columns:
                         return rec[col].values[0]
                 return "N/A"
