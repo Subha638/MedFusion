@@ -19,9 +19,9 @@ def load_csv(file_name):
         st.warning(f"{file_name} not found in app folder.")
         return None
 
-# Load all CSV files
-symtoms_df = load_csv("symtoms_df.csv")       # Symptoms
-medications_df = load_csv("medications.csv") # Medications
+# Load CSV files
+symtoms_df = load_csv("symtoms_df.csv")
+medications_df = load_csv("medications.csv")
 precautions_df = load_csv("precautions_df.csv")
 diets_df = load_csv("diets.csv")
 workout_df = load_csv("workout_df.csv")
@@ -29,7 +29,7 @@ workout_df = load_csv("workout_df.csv")
 # ----------------- NORMALIZE DISEASE NAMES -----------------
 def normalize_disease(df):
     if df is not None and 'Disease' in df.columns:
-        df['Disease'] = df['Disease'].str.lower().str.strip()
+        df['Disease'] = df['Disease'].astype(str).str.strip().str.lower()
     return df
 
 symtoms_df = normalize_disease(symtoms_df)
@@ -73,6 +73,7 @@ if symtoms_df is not None:
         selected = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "Select"]
         st.write("You selected:", selected)
 
+        # Filter diseases based on selected symptoms
         diseases_df = symtoms_df.copy()
         for s in selected:
             diseases_df = diseases_df[
@@ -86,31 +87,39 @@ if symtoms_df is not None:
         st.success(f"Possible diseases: {', '.join([d.title() for d in possible_diseases])}")
 
         # ----------------- RECOMMENDATIONS -----------------
+        def get_recommendations(df, disease, column_name):
+            """Return list of recommendations from CSV or ['N/A']"""
+            if df is not None and column_name in df.columns:
+                rec = df[df['Disease'] == disease.lower()]
+                if not rec.empty:
+                    val = rec[column_name].values[0]
+                    # Convert comma-separated strings into list
+                    if ',' in val:
+                        return [v.strip() for v in val.split(',')]
+                    else:
+                        return [val.strip()]
+            return ["N/A"]
+
         for disease in possible_diseases:
-            st.subheader(f"{disease.title()}")
+            st.subheader(disease.title())
+            medications = get_recommendations(medications_df, disease, 'Medications')
+            precautions = get_recommendations(precautions_df, disease, 'Precautions')
+            diet = get_recommendations(diets_df, disease, 'Diet')
+            workout = get_recommendations(workout_df, disease, 'Workout')
 
-            def get_rec_list(df, col):
-                """Return recommendations as list if possible, else N/A"""
-                if df is not None:
-                    rec = df[df['Disease'] == disease]
-                    if not rec.empty and col in rec.columns:
-                        # Split by comma if multiple items
-                        val = rec[col].values[0]
-                        if ',' in val:
-                            return [i.strip() for i in val.split(',')]
-                        else:
-                            return [val]
-                return ["N/A"]
-
-            medications = get_rec_list(medications_df, 'Medications')
-            precautions = get_rec_list(precautions_df, 'Precautions')
-            diet = get_rec_list(diets_df, 'Diet')
-            workout = get_rec_list(workout_df, 'Workout')
-
-            st.markdown(f"**Medications:** {', '.join(medications)}")
-            st.markdown(f"**Precautions:** {', '.join(precautions)}")
-            st.markdown(f"**Diet:** {', '.join(diet)}")
-            st.markdown(f"**Workout:** {', '.join(workout)}")
+            # Display as bullet points
+            st.markdown("**Medications:**")
+            for item in medications:
+                st.markdown(f"- {item}")
+            st.markdown("**Precautions:**")
+            for item in precautions:
+                st.markdown(f"- {item}")
+            st.markdown("**Diet:**")
+            for item in diet:
+                st.markdown(f"- {item}")
+            st.markdown("**Workout:**")
+            for item in workout:
+                st.markdown(f"- {item}")
 
 else:
     st.warning("Please make sure all required CSV files are in the app folder.")
