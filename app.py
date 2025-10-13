@@ -4,23 +4,21 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
 
 # ----------------------------
-# Caching function to load data
+# Load CSVs
 # ----------------------------
 @st.cache_data
 def load_data():
-    # Load all CSVs from repo (must be committed)
-    symptoms_df = pd.read_csv("symtoms_df.csv")
+    symptoms_df = pd.read_csv("symtoms_df.csv")  # note the typo matches your file
     diets_df = pd.read_csv("diets.csv")
     medications_df = pd.read_csv("medications.csv")
-    precautions_df = pd.read_csv("precautions_df.csv")
+    precautions_df = pd.read_csv("precautions.csv")
     workout_df = pd.read_csv("workout_df.csv")
     return symptoms_df, diets_df, medications_df, precautions_df, workout_df
 
 # ----------------------------
-# Cache model training
+# Train model
 # ----------------------------
 @st.cache_resource
 def train_model(symptoms_df):
@@ -31,14 +29,14 @@ def train_model(symptoms_df):
     symptoms_df = symptoms_df.dropna(subset=[disease_col])
     symptoms_df[disease_col] = symptoms_df[disease_col].astype(str).str.strip()
 
-    # Collect unique symptoms
+    # Collect all unique symptoms
     all_symptoms = set()
     for col in symptom_cols:
         if col in symptoms_df.columns:
             all_symptoms.update([str(s).strip() for s in symptoms_df[col].dropna().unique() if str(s).strip()])
     all_symptoms = sorted(list(all_symptoms))
 
-    # Binary feature matrix
+    # Create binary feature matrix
     X = pd.DataFrame(0, index=symptoms_df.index, columns=all_symptoms)
     for idx, row in symptoms_df.iterrows():
         for col in symptom_cols:
@@ -48,40 +46,27 @@ def train_model(symptoms_df):
                     X.at[idx, sym] = 1
     y = symptoms_df[disease_col]
 
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Train Random Forest
+    # Train model
     clf = RandomForestClassifier(n_estimators=100, random_state=42)
-    clf.fit(X_train, y_train)
+    clf.fit(X, y)
 
     return clf, all_symptoms, symptom_cols, disease_col, X
 
 # ----------------------------
-# Load data and train model
+# Prediction
 # ----------------------------
-st.title("Disease Prediction App")
-st.markdown("Select symptoms to predict possible disease and get recommendations.")
-
-symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
-clf, all_symptoms, symptom_cols, disease_col, X = train_model(symptoms_df)
-
-# ----------------------------
-# Prediction function
-# ----------------------------
-def predict_disease(user_symptoms):
+def predict_disease(selected_symptoms):
     input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
-    for sym in user_symptoms:
-        sym_str = str(sym).strip()
-        if sym_str in all_symptoms:
-            input_vector[sym_str] = 1
+    for sym in selected_symptoms:
+        if sym in all_symptoms:
+            input_vector[sym] = 1
     prediction = clf.predict(input_vector)[0]
     probabilities = clf.predict_proba(input_vector)[0]
     top_3 = sorted(zip(clf.classes_, probabilities), key=lambda x: x[1], reverse=True)[:3]
     return prediction, top_3
 
 # ----------------------------
-# Recommendations function
+# Recommendations
 # ----------------------------
 def get_recommendations(disease):
     # Diet
@@ -113,30 +98,71 @@ def get_recommendations(disease):
     }
 
 # ----------------------------
-# Streamlit cascading symptom selection
+# Load data and train model
 # ----------------------------
+st.title("Disease Prediction App")
+symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
+clf, all_symptoms, symptom_cols, disease_col, X = train_model(symptoms_df)
+
+# ----------------------------
+# Cascading symptom selection
+# ----------------------------
+st.subheader("Select Symptoms Sequentially:")
+
+def get_next_symptoms(selected_prev):
+    """Return symptoms co-occurring with selected_prev in dataset"""
+    if not selected_prev:
+        return all_symptoms
+    # Filter rows where all previous symptoms are 1
+    mask = np.ones(len(X), dtype=bool)
+    for s in selected_prev:
+        mask &= (X[s] == 1)
+    # Find remaining symptoms in these rows
+    co_occur = []
+    for col in all_symptoms:
+        if col not in selected_prev and X.loc[mask, col].sum() > 0:
+            co_occur.append(col)
+    return co_occur
+
 selected_symptoms = []
-col1, col2 = st.columns(2)
-with col1:
-    symptom1 = st.selectbox("Symptom 1", [None]+all_symptoms)
-with col2:
-    symptom2 = st.selectbox("Symptom 2", [None]+all_symptoms)
 
-symptom3 = st.selectbox("Symptom 3", [None]+all_symptoms)
-symptom4 = st.selectbox("Symptom 4", [None]+all_symptoms)
+sym1_options = get_next_symptoms([])
+symptom1 = st.selectbox("Symptom 1", [None]+sym1_options)
+if symptom1:
+    selected_symptoms.append(symptom1)
+    sym2_options = get_next_symptoms(selected_symptoms)
+else:
+    sym2_options = []
 
-for s in [symptom1, symptom2, symptom3, symptom4]:
-    if s is not None:
-        selected_symptoms.append(s)
+symptom2 = st.selectbox("Symptom 2", [None]+sym2_options)
+if symptom2:
+    selected_symptoms.append(symptom2)
+    sym3_options = get_next_symptoms(selected_symptoms)
+else:
+    sym3_options = []
 
+symptom3 = st.selectbox("Symptom 3", [None]+sym3_options)
+if symptom3:
+    selected_symptoms.append(symptom3)
+    sym4_options = get_next_symptoms(selected_symptoms)
+else:
+    sym4_options = []
+
+symptom4 = st.selectbox("Symptom 4", [None]+sym4_options)
+if symptom4:
+    selected_symptoms.append(symptom4)
+
+# ----------------------------
+# Prediction button
+# ----------------------------
 if st.button("Predict Disease"):
-    if len(selected_symptoms) == 0:
+    if not selected_symptoms:
         st.warning("Please select at least one symptom.")
     else:
         predicted_disease, top_3 = predict_disease(selected_symptoms)
         st.success(f"Predicted Disease: {predicted_disease}")
 
-        st.subheader("Top 3 probable diseases:")
+        st.subheader("Top 3 Probable Diseases:")
         for d, p in top_3:
             st.write(f"{d}: {p:.2f}")
 
@@ -149,4 +175,3 @@ if st.button("Predict Disease"):
         st.write(recommendations['Precautions'])
         st.subheader("Workout Tips")
         st.write(recommendations['Workouts'])
-
