@@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(__file__)
 
 @st.cache_data
 def load_data():
-    symptoms_df = pd.read_csv(os.path.join(BASE_DIR, "symptoms_df.csv"))
+    symptoms_df = pd.read_csv(os.path.join(BASE_DIR, "symtoms_df.csv"))
     diets_df = pd.read_csv(os.path.join(BASE_DIR, "diets.csv"))
     medications_df = pd.read_csv(os.path.join(BASE_DIR, "medications.csv"))
     precautions_df = pd.read_csv(os.path.join(BASE_DIR, "precautions_df.csv"))
@@ -163,3 +163,4 @@ if st.button("Predict Disease"):
         ax.set_xlabel("Probability")
         ax.set_title("Top 3 Disease Probabilities")
         st.pyplot(fig)
+
