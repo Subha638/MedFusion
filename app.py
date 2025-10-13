@@ -8,13 +8,14 @@ st.title("🩺 Disease Prediction Dashboard")
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv("symtoms_df.csv")  # Use your actual file name
-        # Clean column names: remove spaces and standardize capitalization
-        df.columns = [c.strip().title() for c in df.columns]
-        # Check required columns
-        if 'Symptom' not in df.columns or 'Disease' not in df.columns:
-            st.error("CSV must contain 'Symptom' and 'Disease' columns.")
-            return None
+        df = pd.read_csv("symtoms_df.csv")
+        # Clean column names
+        df.columns = [c.strip() for c in df.columns]
+        required_cols = ['Disease', 'Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
+        for col in required_cols:
+            if col not in df.columns:
+                st.error(f"CSV must contain '{col}' column.")
+                return None
         return df
     except FileNotFoundError:
         st.error("File 'symtoms_df.csv' not found. Please upload it to the app folder.")
@@ -23,46 +24,35 @@ def load_data():
 symtoms_df = load_data()
 
 if symtoms_df is not None:
-    # Get list of all symptoms
-    all_symptoms = sorted(symtoms_df['Symptom'].unique())
+    # Get list of all unique symptoms across all symptom columns
+    symptom_cols = ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
+    all_symptoms = sorted(pd.unique(symtoms_df[symptom_cols].values.ravel('K')))
 
-    # ----------------- SELECT SYMPTOMS -----------------
     st.subheader("Select Symptoms")
 
-    # Function to filter symptoms based on previous selections
+    # Function to filter symptoms for next selection based on previous selections
     def filter_symptoms(selected_symptoms):
         if not selected_symptoms:
             return all_symptoms
-        filtered_df = symtoms_df
+        # Filter rows where all selected symptoms appear in any symptom column
+        filtered_df = symtoms_df.copy()
         for s in selected_symptoms:
-            filtered_df = filtered_df[filtered_df['Symptom'] == s]
-        # Return next symptoms excluding already selected ones
-        next_symptoms = [x for x in symtoms_df['Symptom'].unique() if x not in selected_symptoms]
-        return sorted(next_symptoms)
+            filtered_df = filtered_df[
+                (filtered_df['Symptom_1'] == s) |
+                (filtered_df['Symptom_2'] == s) |
+                (filtered_df['Symptom_3'] == s) |
+                (filtered_df['Symptom_4'] == s)
+            ]
+        # Get remaining symptoms for next selection
+        remaining_symptoms = pd.unique(filtered_df[symptom_cols].values.ravel('K'))
+        remaining_symptoms = [x for x in remaining_symptoms if x not in selected_symptoms and pd.notna(x)]
+        return sorted(remaining_symptoms)
 
-    # Symptom 1
+    # Symptom selection
     symptom1 = st.selectbox("Symptom 1", ["Select"] + all_symptoms)
-
-    # Symptom 2
-    if symptom1 != "Select":
-        symptom2_options = filter_symptoms([symptom1])
-        symptom2 = st.selectbox("Symptom 2", ["Select"] + symptom2_options)
-    else:
-        symptom2 = "Select"
-
-    # Symptom 3
-    if symptom2 != "Select":
-        symptom3_options = filter_symptoms([symptom1, symptom2])
-        symptom3 = st.selectbox("Symptom 3", ["Select"] + symptom3_options)
-    else:
-        symptom3 = "Select"
-
-    # Symptom 4
-    if symptom3 != "Select":
-        symptom4_options = filter_symptoms([symptom1, symptom2, symptom3])
-        symptom4 = st.selectbox("Symptom 4", ["Select"] + symptom4_options)
-    else:
-        symptom4 = "Select"
+    symptom2 = st.selectbox("Symptom 2", ["Select"] + (filter_symptoms([symptom1]) if symptom1 != "Select" else []))
+    symptom3 = st.selectbox("Symptom 3", ["Select"] + (filter_symptoms([symptom1, symptom2]) if symptom2 != "Select" else []))
+    symptom4 = st.selectbox("Symptom 4", ["Select"] + (filter_symptoms([symptom1, symptom2, symptom3]) if symptom3 != "Select" else []))
 
     # ----------------- PREDICTION -----------------
     if st.button("Predict Disease"):
@@ -70,13 +60,17 @@ if symtoms_df is not None:
         st.write("You selected:", selected)
 
         # Filter dataset for matching diseases
-        diseases = symtoms_df
+        diseases_df = symtoms_df.copy()
         for s in selected:
-            diseases = diseases[diseases['Symptom'] == s]
+            diseases_df = diseases_df[
+                (diseases_df['Symptom_1'] == s) |
+                (diseases_df['Symptom_2'] == s) |
+                (diseases_df['Symptom_3'] == s) |
+                (diseases_df['Symptom_4'] == s)
+            ]
 
-        # Show possible diseases
-        possible_diseases = diseases['Disease'].unique() if not diseases.empty else ["No disease found"]
+        possible_diseases = diseases_df['Disease'].unique() if not diseases_df.empty else ["No disease found"]
         st.success(f"Possible diseases: {', '.join(possible_diseases)}")
 
 else:
-    st.warning("Please upload the 'symtoms_df.csv' file to proceed.")
+    st.warning("Please make sure 'symtoms_df.csv' is in the app folder.")
