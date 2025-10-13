@@ -1,7 +1,18 @@
-import os
-import pandas as pd
-import streamlit as st
+# app.py
 
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+
+# -----------------------------
+# Load CSV Data
+# -----------------------------
 BASE_DIR = os.path.dirname(__file__)
 
 @st.cache_data
@@ -9,37 +20,38 @@ def load_data():
     symptoms_df = pd.read_csv(os.path.join(BASE_DIR, "symptoms_df.csv"))
     diets_df = pd.read_csv(os.path.join(BASE_DIR, "diets.csv"))
     medications_df = pd.read_csv(os.path.join(BASE_DIR, "medications.csv"))
-    precautions_df = pd.read_csv(os.path.join(BASE_DIR, "precautions_df.csv"))  # ✅ Corrected name
+    precautions_df = pd.read_csv(os.path.join(BASE_DIR, "precautions_df.csv"))
     workout_df = pd.read_csv(os.path.join(BASE_DIR, "workout_df.csv"))
     return symptoms_df, diets_df, medications_df, precautions_df, workout_df
 
 symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
 
-# --------------------------
-# Preprocess Data
-# --------------------------
+# -----------------------------
+# Preprocess Symptoms Data
+# -----------------------------
 symptom_cols = [col for col in symptoms_df.columns if 'Symptom' in col]
 disease_col = 'Disease'
 
-# Drop rows where Disease is missing
+# Drop rows with missing disease
 symptoms_df = symptoms_df.dropna(subset=[disease_col])
 symptoms_df[disease_col] = symptoms_df[disease_col].astype(str).str.strip()
 
-# Filter classes with at least 2 samples
-class_counts = symptoms_df[disease_col].value_counts()
-valid_mask = symptoms_df[disease_col].isin(class_counts[class_counts >= 2].index)
-symptoms_df = symptoms_df[valid_mask]
+# Collect all unique symptoms
+all_symptoms = set()
+for col in symptom_cols:
+    if col in symptoms_df.columns:
+        all_symptoms.update([str(s).strip() for s in symptoms_df[col].dropna().unique() if str(s).strip()])
+all_symptoms = sorted(list(all_symptoms))
 
-# Collect unique symptoms
-all_symptoms = sorted({str(s).strip() for col in symptom_cols for s in symptoms_df[col].dropna() if str(s).strip()})
-
-# Create binary feature matrix
+# Binary feature matrix
 X = pd.DataFrame(0, index=symptoms_df.index, columns=all_symptoms)
 for idx, row in symptoms_df.iterrows():
     for col in symptom_cols:
-        sym = str(row[col]).strip()
-        if sym in all_symptoms:
-            X.at[idx, sym] = 1
+        if col in symptoms_df.columns:
+            sym = str(row[col]).strip()
+            if sym and sym in all_symptoms:
+                X.at[idx, sym] = 1
+
 y = symptoms_df[disease_col]
 
 # Train Random Forest
@@ -47,18 +59,20 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 clf = RandomForestClassifier(n_estimators=100, random_state=42)
 clf.fit(X_train, y_train)
 
-# --------------------------
-# Prediction Functions
-# --------------------------
-def predict_disease(selected_symptoms):
-    input_vec = pd.DataFrame(0, index=[0], columns=all_symptoms)
-    for s in selected_symptoms:
-        if s in all_symptoms:
-            input_vec[s] = 1
-    pred = clf.predict(input_vec)[0]
-    probs = clf.predict_proba(input_vec)[0]
-    top_3 = sorted(zip(clf.classes_, probs), key=lambda x: x[1], reverse=True)[:3]
-    return pred, top_3
+# -----------------------------
+# Prediction & Recommendation Functions
+# -----------------------------
+def predict_disease(user_symptoms):
+    input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
+    for sym in user_symptoms:
+        sym_str = str(sym).strip()
+        if sym_str in all_symptoms:
+            input_vector[sym_str] = 1
+
+    prediction = clf.predict(input_vector)[0]
+    probabilities = clf.predict_proba(input_vector)[0]
+    top_3 = sorted(zip(clf.classes_, probabilities), key=lambda x: x[1], reverse=True)[:3]
+    return prediction, top_3
 
 def get_recommendations(disease):
     # Diet
@@ -72,8 +86,9 @@ def get_recommendations(disease):
     # Precautions
     prec_rows = precautions_df[precautions_df['Disease'] == disease]
     if not prec_rows.empty:
-        prec_cols = [c for c in prec_rows.columns if 'Precaution' in c]
-        precautions = [str(p).strip() for p in prec_rows[prec_cols].values.flatten() if str(p).strip()]
+        prec_cols = [col for col in prec_rows.columns if 'Precaution' in col]
+        precautions = prec_rows[prec_cols].values.flatten()
+        precautions = [str(p).strip() for p in precautions if pd.notna(p) and str(p).strip() != '']
     else:
         precautions = ["No data available"]
 
@@ -81,59 +96,70 @@ def get_recommendations(disease):
     workout_rows = workout_df[workout_df['disease'] == disease]
     workouts = [str(w).strip() for w in workout_rows['workout'].tolist()] if not workout_rows.empty else ["No data available"]
 
-    return {'Diet': diet, 'Medications': meds, 'Precautions': precautions[:4], 'Workouts': workouts[:5]}
+    return {
+        'Diet': diet,
+        'Medications': meds,
+        'Precautions': precautions[:4],
+        'Workouts': workouts[:5]
+    }
 
-# --------------------------
-# Streamlit UI
-# --------------------------
-st.title("🩺 Disease Prediction App")
+# -----------------------------
+# Streamlit App UI
+# -----------------------------
+st.title("🩺 Disease Prediction Dashboard")
 
-# Cascading symptom dropdowns
-symptom1 = st.selectbox("Select Symptom 1", [None]+all_symptoms)
-symptom2 = st.selectbox("Select Symptom 2", [None], disabled=True)
-symptom3 = st.selectbox("Select Symptom 3", [None], disabled=True)
-symptom4 = st.selectbox("Select Symptom 4", [None], disabled=True)
+# Cascading symptom selection
+all_symptoms_options = list(all_symptoms)
+symptom1 = st.selectbox("Symptom 1", ["Select"] + all_symptoms_options)
+symptom2 = st.selectbox("Symptom 2", ["Select"])
+symptom3 = st.selectbox("Symptom 3", ["Select"])
+symptom4 = st.selectbox("Symptom 4", ["Select"])
 
-def update_options():
-    global symptom2, symptom3, symptom4
-    if symptom1:
-        # Diseases with symptom1
-        rows = X[X[symptom1]==1].index
-        co_symptoms = [s for s in all_symptoms if s!=symptom1 and X.loc[rows,s].sum()>0]
-        symptom2.options = [None]+co_symptoms
-        symptom2.disabled = False
-    else:
-        symptom2.options = [None]
-        symptom2.disabled = True
+# Filter next symptoms based on previous selection
+if symptom1 != "Select":
+    symptom2_options = X[X[symptom1] == 1].loc[:, all_symptoms].sum()
+    symptom2_options = [s for s in symptom2_options[symptom2_options>0].index if s != symptom1]
+    symptom2_options = ["Select"] + symptom2_options
+    symptom2 = st.selectbox("Symptom 2", symptom2_options)
 
-update_options()
+if symptom2 != "Select" and symptom1 != "Select":
+    symptom3_options = X[(X[symptom1]==1) & (X[symptom2]==1)].loc[:, all_symptoms].sum()
+    symptom3_options = [s for s in symptom3_options[symptom3_options>0].index if s not in [symptom1, symptom2]]
+    symptom3_options = ["Select"] + symptom3_options
+    symptom3 = st.selectbox("Symptom 3", symptom3_options)
 
+if symptom3 != "Select" and symptom2 != "Select" and symptom1 != "Select":
+    symptom4_options = X[(X[symptom1]==1) & (X[symptom2]==1) & (X[symptom3]==1)].loc[:, all_symptoms].sum()
+    symptom4_options = [s for s in symptom4_options[symptom4_options>0].index if s not in [symptom1, symptom2, symptom3]]
+    symptom4_options = ["Select"] + symptom4_options
+    symptom4 = st.selectbox("Symptom 4", symptom4_options)
+
+# Predict button
 if st.button("Predict Disease"):
-    selected = [symptom1, symptom2, symptom3, symptom4]
-    selected = [s for s in selected if s]
-    if not selected:
-        st.warning("Please select at least one symptom!")
+    selected_symptoms = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "Select"]
+    if len(selected_symptoms) < 1:
+        st.warning("Please select at least one symptom.")
     else:
-        pred, top_3 = predict_disease(selected)
-        st.subheader(f"Predicted Disease: {pred}")
-        st.write("Top 3 Probable Diseases:")
-        for d, p in top_3:
-            st.write(f"- {d}: {p:.2f}")
+        predicted_disease, top_3 = predict_disease(selected_symptoms)
+        st.success(f"Predicted Disease: {predicted_disease}")
 
-        rec = get_recommendations(pred)
-        st.subheader("Diet Recommendations")
-        st.write(rec['Diet'])
-        st.subheader("Medication Recommendations")
-        st.write(rec['Medications'])
-        st.subheader("Precautions")
-        st.write(rec['Precautions'])
-        st.subheader("Workouts")
-        st.write(rec['Workouts'])
+        st.subheader("Top 3 Probable Diseases")
+        for disease, prob in top_3:
+            st.write(f"- {disease}: {prob:.2f}")
 
-        # Optional bar chart
+        # Recommendations
+        recs = get_recommendations(predicted_disease)
+        st.subheader("Recommendations")
+        st.markdown(f"**Diet:** {recs['Diet']}")
+        st.markdown(f"**Medications:** {recs['Medications']}")
+        st.markdown(f"**Precautions:** {', '.join(recs['Precautions'])}")
+        st.markdown(f"**Workouts:** {', '.join(recs['Workouts'])}")
+
+        # Top 3 probability chart
+        probs = [p for d, p in top_3]
+        diseases = [d for d, p in top_3]
         fig, ax = plt.subplots()
-        ax.barh([d for d,_ in top_3], [p for _,p in top_3])
+        ax.barh(diseases, probs)
         ax.set_xlabel("Probability")
         ax.set_title("Top 3 Disease Probabilities")
         st.pyplot(fig)
-
