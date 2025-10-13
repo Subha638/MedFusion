@@ -6,22 +6,21 @@ st.title("🩺 Disease Prediction Dashboard")
 
 # ----------------- LOAD DATA -----------------
 @st.cache_data
-def load_data(file):
-    if file is not None:
-        df = pd.read_csv(file)
-        # Clean column names: remove spaces, standardize capitalization
+def load_data():
+    try:
+        df = pd.read_csv("symtoms_df.csv")  # Use your actual file name
+        # Clean column names: remove spaces and standardize capitalization
         df.columns = [c.strip().title() for c in df.columns]
-        # Ensure required columns exist
+        # Check required columns
         if 'Symptom' not in df.columns or 'Disease' not in df.columns:
             st.error("CSV must contain 'Symptom' and 'Disease' columns.")
             return None
         return df
-    else:
+    except FileNotFoundError:
+        st.error("File 'symtoms_df.csv' not found. Please upload it to the app folder.")
         return None
 
-# File uploader
-uploaded_file = st.file_uploader("Upload your symptoms CSV", type=["csv"])
-symtoms_df = load_data(uploaded_file)
+symtoms_df = load_data()
 
 if symtoms_df is not None:
     # Get list of all symptoms
@@ -80,4 +79,4 @@ if symtoms_df is not None:
         st.success(f"Possible diseases: {', '.join(possible_diseases)}")
 
 else:
-    st.warning("Please upload the symptoms CSV to proceed.")
+    st.warning("Please upload the 'symtoms_df.csv' file to proceed.")
