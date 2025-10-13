@@ -26,7 +26,7 @@ symtoms_df = load_data()
 if symtoms_df is not None:
     # Get list of all unique symptoms across all symptom columns
     symptom_cols = ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
-    all_symptoms = sorted(pd.unique(symtoms_df[symptom_cols].values.ravel('K')))
+    all_symptoms = sorted(pd.unique(symtoms_df[symptom_cols].values.ravel))
 
     st.subheader("Select Symptoms")
 
@@ -74,3 +74,4 @@ if symtoms_df is not None:
 
 else:
     st.warning("Please make sure 'symtoms_df.csv' is in the app folder.")
+
