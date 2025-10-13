@@ -21,7 +21,18 @@ def load_data():
         st.error("File 'symtoms_df.csv' not found. Please upload it to the app folder.")
         return None
 
+# ----------------- LOAD RECOMMENDATIONS -----------------
+@st.cache_data
+def load_recommendations():
+    try:
+        rec_df = pd.read_csv("recommendations.csv")  # Columns: Disease, Precautions, Diet, Medication
+        rec_df.columns = [c.strip().title() for c in rec_df.columns]
+        return rec_df
+    except FileNotFoundError:
+        return None  # If no recommendations file, we just skip recommendations
+
 symtoms_df = load_data()
+rec_df = load_recommendations()
 
 if symtoms_df is not None:
     # ----------------- SYMPTOM LIST -----------------
@@ -80,6 +91,23 @@ if symtoms_df is not None:
 
         possible_diseases = diseases_df['Disease'].unique() if not diseases_df.empty else ["No disease found"]
         st.success(f"Possible diseases: {', '.join(possible_diseases)}")
+
+        # ----------------- RECOMMENDATIONS -----------------
+        if rec_df is not None and possible_diseases != ["No disease found"]:
+            st.subheader("Recommendations")
+            for disease in possible_diseases:
+                rec = rec_df[rec_df['Disease'] == disease]
+                if not rec.empty:
+                    precautions = rec['Precautions'].values[0] if 'Precautions' in rec.columns else "N/A"
+                    diet = rec['Diet'].values[0] if 'Diet' in rec.columns else "N/A"
+                    medication = rec['Medication'].values[0] if 'Medication' in rec.columns else "N/A"
+                    
+                    st.markdown(f"**{disease}**")
+                    st.markdown(f"- **Precautions:** {precautions}")
+                    st.markdown(f"- **Diet:** {diet}")
+                    st.markdown(f"- **Medication:** {medication}")
+                else:
+                    st.markdown(f"**{disease}**: No recommendations available.")
 
 else:
     st.warning("Please make sure 'symtoms_df.csv' is in the app folder.")
