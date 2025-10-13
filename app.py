@@ -92,7 +92,7 @@ if symtoms_df is not None:
         possible_diseases = diseases_df['Disease'].unique() if not diseases_df.empty else ["No disease found"]
         st.success(f"Possible diseases: {', '.join(possible_diseases)}")
 
-        # ----------------- RECOMMENDATIONS -----------------
+          # ----------------- RECOMMENDATIONS -----------------
         if rec_df is not None and possible_diseases != ["No disease found"]:
             st.subheader("Recommendations")
             for disease in possible_diseases:
