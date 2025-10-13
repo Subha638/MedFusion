@@ -8,7 +8,7 @@ st.title("🩺 Disease Prediction Dashboard")
 # ----------------- LOAD DATA -----------------
 @st.cache_data
 def load_data():
-    symptoms_df = pd.read_csv("symptoms_df.csv")  # your CSV with symptoms & diseases
+    symptoms_df = pd.read_csv("symtoms_df.csv")  # your CSV with symptoms & diseases
     return symptoms_df
 
 symptoms_df = load_data()
@@ -142,3 +142,4 @@ if st.button("Predict Disease"):
     # Show possible diseases
     possible_diseases = diseases['Disease'].unique() if not diseases.empty else ["No disease found"]
     st.success(f"Possible diseases: {', '.join(possible_diseases)}")
+
