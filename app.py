@@ -1,90 +1,131 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import joblib
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
 
-# ---------- DATA LOADING ----------
+# ----------------------------
+# PAGE CONFIG
+# ----------------------------
+st.set_page_config(page_title="Disease Prediction App", layout="wide")
+st.title("🩺 Disease Prediction and Recommendation System")
+
+# ----------------------------
+# LOAD MODEL AND DATA
+# ----------------------------
+@st.cache_resource
+def load_model():
+    clf = joblib.load("MLFinPro.joblib")
+    return clf
+
 @st.cache_data
 def load_data():
     symptoms_df = pd.read_csv("symptoms_df.csv")
-    diets_df = pd.read_csv("diets_df.csv")
-    medications_df = pd.read_csv("medications_df.csv")
+    diets_df = pd.read_csv("diets.csv")
+    medications_df = pd.read_csv("medications.csv")
     precautions_df = pd.read_csv("precautions_df.csv")
     workout_df = pd.read_csv("workout_df.csv")
-    return symptoms_df, diets_df, medications_df, precautions_df, workout_df
+    description_df = pd.read_csv("description.csv")
+    return symptoms_df, diets_df, medications_df, precautions_df, workout_df, description_df
 
-symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
+clf = load_model()
+symptoms_df, diets_df, medications_df, precautions_df, workout_df, description_df = load_data()
 
-# ---------- MODEL TRAINING ----------
-symptom_cols = [col for col in symptoms_df.columns if 'Symptom' in col]
-all_symptoms = sorted(list(set(sum([symptoms_df[c].dropna().astype(str).tolist() for c in symptom_cols], []))))
+# ----------------------------
+# PREPARE SYMPTOMS DATA
+# ----------------------------
+symptom_cols = [c for c in symptoms_df.columns if "Symptom" in c]
+all_symptoms = sorted(list(set(
+    s.strip() for col in symptom_cols for s in symptoms_df[col].dropna().astype(str)
+)))
 
-# Binary encoding
-X = pd.DataFrame(0, index=symptoms_df.index, columns=all_symptoms)
-for idx, row in symptoms_df.iterrows():
-    for col in symptom_cols:
-        val = str(row[col]).strip()
-        if val in all_symptoms:
-            X.at[idx, val] = 1
-
-y = symptoms_df['Disease']
-X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
-clf = RandomForestClassifier(n_estimators=100, random_state=42)
-clf.fit(X_train, y_train)
-
-# ---------- HELPER FUNCTIONS ----------
+# ----------------------------
+# PREDICT DISEASE FUNCTION
+# ----------------------------
 def predict_disease(symptoms):
     input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
     for s in symptoms:
-        s = str(s).strip()
+        s = s.strip()
         if s in all_symptoms:
             input_vector[s] = 1
-    pred = clf.predict(input_vector)[0]
+
+    prediction = clf.predict(input_vector)[0]
     probs = clf.predict_proba(input_vector)[0]
     top_3 = sorted(zip(clf.classes_, probs), key=lambda x: x[1], reverse=True)[:3]
-    return pred, top_3
+    return prediction, top_3
 
+# ----------------------------
+# GET RECOMMENDATIONS
+# ----------------------------
 def get_recommendations(disease):
-    diet = diets_df[diets_df['Disease'] == disease]['Diet'].tolist() or ["No data available"]
-    meds = medications_df[medications_df['Disease'] == disease]['Medication'].tolist() or ["No data available"]
-    pre = precautions_df[precautions_df['Disease'] == disease].dropna(axis=1).values.flatten().tolist() or ["No data available"]
-    work = workout_df[workout_df['disease'] == disease]['workout'].tolist() or ["No data available"]
-    return {"Diet": diet, "Medications": meds, "Precautions": pre[:4], "Workouts": work[:4]}
+    disease = disease.strip()
 
-# ---------- CHATBOT-LIKE UI ----------
-st.title("💬 Health AI Chatbot")
-st.write("Describe your symptoms or select them manually to get predictions and advice.")
+    diet = diets_df.loc[diets_df["Disease"] == disease, "Diet"]
+    diet = eval(diet.iloc[0]) if not diet.empty else ["No data"]
 
-chat = st.chat_input("Enter symptoms (comma separated) or click below options:")
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    meds = medications_df.loc[medications_df["Disease"] == disease, "Medication"]
+    meds = eval(meds.iloc[0]) if not meds.empty else ["No data"]
 
-if chat:
-    st.session_state.messages.append({"role": "user", "content": chat})
-    symptoms = [s.strip().lower() for s in chat.split(",")]
-    pred, top3 = predict_disease(symptoms)
-    rec = get_recommendations(pred)
+    prec = precautions_df.loc[precautions_df["Disease"] == disease]
+    if not prec.empty:
+        prec_cols = [c for c in prec.columns if "Precaution" in c]
+        precautions = [str(x) for x in prec[prec_cols].values.flatten() if pd.notna(x)]
+    else:
+        precautions = ["No data"]
 
-    msg = f"🎯 **Predicted Disease:** {pred}\n\n"
-    msg += "**Top Predictions:**\n" + "\n".join([f"- {d}: {round(p,2)}" for d,p in top3])
-    st.session_state.messages.append({"role": "assistant", "content": msg})
+    workout = workout_df.loc[workout_df["disease"] == disease, "workout"]
+    workout = workout.tolist() if not workout.empty else ["No data"]
 
-# display chat history
-for m in st.session_state.messages:
-    with st.chat_message(m["role"]):
-        st.markdown(m["content"])
+    desc = description_df.loc[description_df["Disease"] == disease, "Description"]
+    desc = desc.iloc[0] if not desc.empty else "No description available"
 
-# Optionally show dropdown selection
-with st.expander("Or select symptoms manually"):
-    s1 = st.selectbox("Symptom 1", ["None"] + all_symptoms)
-    s2 = st.selectbox("Symptom 2", ["None"] + all_symptoms)
-    s3 = st.selectbox("Symptom 3", ["None"] + all_symptoms)
-    s4 = st.selectbox("Symptom 4", ["None"] + all_symptoms)
-    if st.button("Predict from Dropdown"):
-        syms = [s for s in [s1,s2,s3,s4] if s != "None"]
-        pred, top3 = predict_disease(syms)
-        st.success(f"🎯 Disease: {pred}")
-        st.bar_chart(pd.DataFrame(top3, columns=["Disease","Probability"]).set_index("Disease"))
-        st.json(get_recommendations(pred))
+    return {
+        "Diet": diet,
+        "Medications": meds,
+        "Precautions": precautions,
+        "Workouts": workout,
+        "Description": desc
+    }
+
+# ----------------------------
+# STREAMLIT UI
+# ----------------------------
+st.sidebar.header("🧩 Select Symptoms")
+symptom1 = st.sidebar.selectbox("Symptom 1", ["None"] + all_symptoms)
+symptom2 = st.sidebar.selectbox("Symptom 2", ["None"] + all_symptoms)
+symptom3 = st.sidebar.selectbox("Symptom 3", ["None"] + all_symptoms)
+symptom4 = st.sidebar.selectbox("Symptom 4", ["None"] + all_symptoms)
+
+if st.sidebar.button("🔍 Predict Disease"):
+    selected = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "None"]
+    if not selected:
+        st.warning("Please select at least one symptom.")
+    else:
+        with st.spinner("Predicting disease..."):
+            disease, top3 = predict_disease(selected)
+            st.success(f"**Predicted Disease:** {disease}")
+            
+            st.subheader("Top 3 Possible Diseases")
+            for d, p in top3:
+                st.write(f"🔹 {d}: {p:.2f}")
+
+            rec = get_recommendations(disease)
+            st.markdown(f"### 🩸 Description")
+            st.write(rec['Description'])
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("### 🍽️ Diet")
+                st.write(rec["Diet"])
+                st.markdown("### 💊 Medications")
+                st.write(rec["Medications"])
+            with col2:
+                st.markdown("### ⚠️ Precautions")
+                st.write(rec["Precautions"])
+                st.markdown("### 🏋️ Workouts")
+                st.write(rec["Workouts"])
+else:
+    st.info("Select symptoms and click **Predict Disease** to start.")
+
+# Footer
+st.markdown("---")
+st.caption("Built with ❤️ by Subhalaxmi Behera")
