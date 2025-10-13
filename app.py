@@ -1,25 +1,16 @@
-# app.py
-import streamlit as st
+import os
 import pandas as pd
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
-import matplotlib.pyplot as plt
-import seaborn as sns
+import streamlit as st
 
-st.set_page_config(page_title="Disease Prediction App", layout="wide")
+BASE_DIR = os.path.dirname(__file__)
 
-# --------------------------
-# Load Data
-# --------------------------
 @st.cache_data
 def load_data():
-    symptoms_df = pd.read_csv("symtoms_df.csv")
-    diets_df = pd.read_csv("diets.csv")
-    medications_df = pd.read_csv("medications.csv")
-    precautions_df = pd.read_csv("precautions.csv")
-    workout_df = pd.read_csv("workout_df.csv")
+    symptoms_df = pd.read_csv(os.path.join(BASE_DIR, "symptoms_df.csv"))
+    diets_df = pd.read_csv(os.path.join(BASE_DIR, "diets.csv"))
+    medications_df = pd.read_csv(os.path.join(BASE_DIR, "medications.csv"))
+    precautions_df = pd.read_csv(os.path.join(BASE_DIR, "precautions_df.csv"))  # ✅ Corrected name
+    workout_df = pd.read_csv(os.path.join(BASE_DIR, "workout_df.csv"))
     return symptoms_df, diets_df, medications_df, precautions_df, workout_df
 
 symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
@@ -145,3 +136,4 @@ if st.button("Predict Disease"):
         ax.set_xlabel("Probability")
         ax.set_title("Top 3 Disease Probabilities")
         st.pyplot(fig)
+
