@@ -6,39 +6,25 @@ st.title("🩺 Disease Prediction Dashboard")
 
 # ----------------- LOAD DATA -----------------
 @st.cache_data
-def load_data():
+def load_csv(file_name):
     try:
-        df = pd.read_csv("symtoms_df.csv")  # your actual CSV file
-        # Clean column names
-        df.columns = [c.strip() for c in df.columns]
-        required_cols = ['Disease', 'Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
-        for col in required_cols:
-            if col not in df.columns:
-                st.error(f"CSV must contain '{col}' column.")
-                return None
+        df = pd.read_csv(file_name)
+        df.columns = [c.strip().title() for c in df.columns]
         return df
     except FileNotFoundError:
-        st.error("File 'symtoms_df.csv' not found. Please upload it to the app folder.")
         return None
 
-# ----------------- LOAD RECOMMENDATIONS -----------------
-@st.cache_data
-def load_recommendations():
-    try:
-        rec_df = pd.read_csv("recommendations.csv")  # Columns: Disease, Precautions, Diet, Medication
-        rec_df.columns = [c.strip().title() for c in rec_df.columns]
-        return rec_df
-    except FileNotFoundError:
-        return None  # If no recommendations file, we just skip recommendations
-
-symtoms_df = load_data()
-rec_df = load_recommendations()
+symtoms_df = load_csv("symtoms_df.csv")  # Disease & Symptoms
+workout_df = load_csv("workout_df.csv")  # Disease & Workout
+precautions_df = load_csv("precautions_df.csv")  # Disease & Precautions
+diets_df = load_csv("diets.csv")  # Disease & Diet
+description_df = load_csv("description.csv")  # Disease & Description
 
 if symtoms_df is not None:
     # ----------------- SYMPTOM LIST -----------------
     symptom_cols = ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
-    all_symptoms = pd.unique(symtoms_df[symptom_cols].values.ravel())  # flatten all symptom columns
-    all_symptoms = [s for s in all_symptoms if pd.notna(s)]  # remove NaN
+    all_symptoms = pd.unique(symtoms_df[symptom_cols].values.ravel())
+    all_symptoms = [s for s in all_symptoms if pd.notna(s)]
     all_symptoms = sorted(all_symptoms)
 
     st.subheader("Select Symptoms")
@@ -55,7 +41,6 @@ if symtoms_df is not None:
                 (filtered_df['Symptom_3'] == s) |
                 (filtered_df['Symptom_4'] == s)
             ]
-        # Remaining symptoms
         remaining_symptoms = pd.unique(filtered_df[symptom_cols].values.ravel())
         remaining_symptoms = [x for x in remaining_symptoms if pd.notna(x) and x not in selected_symptoms]
         return sorted(remaining_symptoms)
@@ -80,6 +65,7 @@ if symtoms_df is not None:
         selected = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "Select"]
         st.write("You selected:", selected)
 
+        # Filter diseases containing any selected symptom
         diseases_df = symtoms_df.copy()
         for s in selected:
             diseases_df = diseases_df[
@@ -92,22 +78,33 @@ if symtoms_df is not None:
         possible_diseases = diseases_df['Disease'].unique() if not diseases_df.empty else ["No disease found"]
         st.success(f"Possible diseases: {', '.join(possible_diseases)}")
 
-          # ----------------- RECOMMENDATIONS -----------------
-        if rec_df is not None and possible_diseases != ["No disease found"]:
-            st.subheader("Recommendations")
-            for disease in possible_diseases:
-                rec = rec_df[rec_df['Disease'] == disease]
-                if not rec.empty:
-                    precautions = rec['Precautions'].values[0] if 'Precautions' in rec.columns else "N/A"
-                    diet = rec['Diet'].values[0] if 'Diet' in rec.columns else "N/A"
-                    medication = rec['Medication'].values[0] if 'Medication' in rec.columns else "N/A"
-                    
-                    st.markdown(f"**{disease}**")
-                    st.markdown(f"- **Precautions:** {precautions}")
-                    st.markdown(f"- **Diet:** {diet}")
-                    st.markdown(f"- **Medication:** {medication}")
-                else:
-                    st.markdown(f"**{disease}**: No recommendations available.")
+        # ----------------- RECOMMENDATIONS -----------------
+        for disease in possible_diseases:
+            st.subheader(f"{disease}")
+
+            # Description
+            if description_df is not None:
+                desc = description_df[description_df['Disease'].str.strip().str.lower() == disease.strip().lower()]
+                if not desc.empty:
+                    st.markdown(f"**Description:** {desc['Description'].values[0]}")
+
+            # Precautions
+            if precautions_df is not None:
+                prec = precautions_df[precautions_df['Disease'].str.strip().str.lower() == disease.strip().lower()]
+                if not prec.empty:
+                    st.markdown(f"**Precautions:** {prec['Precautions'].values[0]}")
+
+            # Diet
+            if diets_df is not None:
+                diet = diets_df[diets_df['Disease'].str.strip().str.lower() == disease.strip().lower()]
+                if not diet.empty:
+                    st.markdown(f"**Diet:** {diet['Diet'].values[0]}")
+
+            # Workout
+            if workout_df is not None:
+                workout = workout_df[workout_df['Disease'].str.strip().str.lower() == disease.strip().lower()]
+                if not workout.empty:
+                    st.markdown(f"**Workout:** {workout['Workout'].values[0]}")
 
 else:
-    st.warning("Please make sure 'symtoms_df.csv' is in the app folder.")
+    st.warning("Please make sure all required CSV files are in the app folder.")
