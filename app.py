@@ -8,7 +8,7 @@ st.title("🩺 Disease Prediction Dashboard")
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv("symtoms_df.csv")
+        df = pd.read_csv("symtoms_df.csv")  # your actual CSV file
         # Clean column names
         df.columns = [c.strip() for c in df.columns]
         required_cols = ['Disease', 'Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
@@ -24,17 +24,18 @@ def load_data():
 symtoms_df = load_data()
 
 if symtoms_df is not None:
-    # Get list of all unique symptoms across all symptom columns
+    # ----------------- SYMPTOM LIST -----------------
     symptom_cols = ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
-    all_symptoms = sorted(pd.unique(symtoms_df[symptom_cols].values.ravel))
+    all_symptoms = pd.unique(symtoms_df[symptom_cols].values.ravel())  # flatten all symptom columns
+    all_symptoms = [s for s in all_symptoms if pd.notna(s)]  # remove NaN
+    all_symptoms = sorted(all_symptoms)
 
     st.subheader("Select Symptoms")
 
-    # Function to filter symptoms for next selection based on previous selections
+    # ----------------- FILTER SYMPTOMS -----------------
     def filter_symptoms(selected_symptoms):
         if not selected_symptoms:
             return all_symptoms
-        # Filter rows where all selected symptoms appear in any symptom column
         filtered_df = symtoms_df.copy()
         for s in selected_symptoms:
             filtered_df = filtered_df[
@@ -43,23 +44,31 @@ if symtoms_df is not None:
                 (filtered_df['Symptom_3'] == s) |
                 (filtered_df['Symptom_4'] == s)
             ]
-        # Get remaining symptoms for next selection
-        remaining_symptoms = pd.unique(filtered_df[symptom_cols].values.ravel('K'))
-        remaining_symptoms = [x for x in remaining_symptoms if x not in selected_symptoms and pd.notna(x)]
+        # Remaining symptoms
+        remaining_symptoms = pd.unique(filtered_df[symptom_cols].values.ravel())
+        remaining_symptoms = [x for x in remaining_symptoms if pd.notna(x) and x not in selected_symptoms]
         return sorted(remaining_symptoms)
 
-    # Symptom selection
+    # ----------------- SYMPTOM SELECTION -----------------
     symptom1 = st.selectbox("Symptom 1", ["Select"] + all_symptoms)
-    symptom2 = st.selectbox("Symptom 2", ["Select"] + (filter_symptoms([symptom1]) if symptom1 != "Select" else []))
-    symptom3 = st.selectbox("Symptom 3", ["Select"] + (filter_symptoms([symptom1, symptom2]) if symptom2 != "Select" else []))
-    symptom4 = st.selectbox("Symptom 4", ["Select"] + (filter_symptoms([symptom1, symptom2, symptom3]) if symptom3 != "Select" else []))
+    symptom2 = st.selectbox(
+        "Symptom 2",
+        ["Select"] + (filter_symptoms([symptom1]) if symptom1 != "Select" else [])
+    )
+    symptom3 = st.selectbox(
+        "Symptom 3",
+        ["Select"] + (filter_symptoms([symptom1, symptom2]) if symptom2 != "Select" else [])
+    )
+    symptom4 = st.selectbox(
+        "Symptom 4",
+        ["Select"] + (filter_symptoms([symptom1, symptom2, symptom3]) if symptom3 != "Select" else [])
+    )
 
     # ----------------- PREDICTION -----------------
     if st.button("Predict Disease"):
         selected = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "Select"]
         st.write("You selected:", selected)
 
-        # Filter dataset for matching diseases
         diseases_df = symtoms_df.copy()
         for s in selected:
             diseases_df = diseases_df[
@@ -74,4 +83,3 @@ if symtoms_df is not None:
 
 else:
     st.warning("Please make sure 'symtoms_df.csv' is in the app folder.")
-
