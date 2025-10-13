@@ -10,7 +10,6 @@ def load_csv(file_name):
     try:
         df = pd.read_csv(file_name)
         df.columns = [c.strip().title() for c in df.columns]
-        # Strip spaces in string columns
         for col in df.columns:
             if df[col].dtype == object:
                 df[col] = df[col].astype(str).str.strip()
@@ -21,10 +20,10 @@ def load_csv(file_name):
 
 # Load all CSV files
 symtoms_df = load_csv("symtoms_df.csv")  # Symptoms
-description_df = load_csv("description.csv")
-precautions_df = load_csv("precautions_df.csv")
-diets_df = load_csv("diets.csv")
-workout_df = load_csv("workout_df.csv")
+workout_df = load_csv("workout_df.csv")  # Workout
+precautions_df = load_csv("precautions_df.csv")  # Precautions
+diets_df = load_csv("diets.csv")  # Diet
+medications_df = load_csv("medications.csv")  # Medications
 
 if symtoms_df is not None:
     symptom_cols = ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
@@ -73,17 +72,18 @@ if symtoms_df is not None:
         for disease in possible_diseases:
             st.subheader(f"{disease}")
 
-            def get_recommendation(df, col):
+            # Function to safely get recommendation text
+            def get_rec_text(df, col):
                 if df is not None:
                     rec = df[df['Disease'].str.lower() == disease.lower()]
                     if not rec.empty and col in rec.columns:
                         return rec[col].values[0]
                 return "N/A"
 
-            st.markdown(f"**Description:** {get_recommendation(description_df, 'Description')}")
-            st.markdown(f"**Precautions:** {get_recommendation(precautions_df, 'Precautions')}")
-            st.markdown(f"**Diet:** {get_recommendation(diets_df, 'Diet')}")
-            st.markdown(f"**Workout:** {get_recommendation(workout_df, 'Workout')}")
+            st.markdown(f"**Medications:** {get_rec_text(medications_df, 'Medications')}")
+            st.markdown(f"**Precautions:** {get_rec_text(precautions_df, 'Precautions')}")
+            st.markdown(f"**Diet:** {get_rec_text(diets_df, 'Diet')}")
+            st.markdown(f"**Workout:** {get_rec_text(workout_df, 'Workout')}")
 
 else:
     st.warning("Please make sure all required CSV files are in the app folder.")
