@@ -4,14 +4,12 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
 
 # ----------------------------
 # Caching function to load data
 # ----------------------------
 @st.cache_data
 def load_data():
-    # Updated filenames
     symptoms_df = pd.read_csv("symtoms_df.csv")
     diets_df = pd.read_csv("diets.csv")
     medications_df = pd.read_csv("medications.csv")
@@ -20,63 +18,42 @@ def load_data():
     return symptoms_df, diets_df, medications_df, precautions_df, workout_df
 
 # ----------------------------
-# Streamlit cascading symptom selection
+# Cache model training
 # ----------------------------
-selected_symptoms = []
-symptom_cols = [col for col in symptoms_df.columns if "Symptom" in col]
+@st.cache_resource
+def train_model(symptoms_df):
+    symptom_cols = [col for col in symptoms_df.columns if "Symptom" in col]
+    disease_col = "Disease"
 
-# Symptom 1 selection
-symptom1 = st.selectbox("Symptom 1", [None] + sorted(symptoms_df[symptom_cols[0]].dropna().unique()))
-if symptom1:
-    selected_symptoms.append(symptom1)
+    # Clean data
+    symptoms_df = symptoms_df.dropna(subset=[disease_col])
+    symptoms_df[disease_col] = symptoms_df[disease_col].astype(str).str.strip()
 
-# Filter dataset for Symptom 2 based on Symptom 1
-if symptom1:
-    filtered_df = symptoms_df[symptoms_df[symptom_cols[0]] == symptom1]
-    symptom2_options = []
-    if len(symptom_cols) > 1:
-        for col in symptom_cols[1:]:
-            symptom2_options.extend(filtered_df[col].dropna().unique())
-    symptom2_options = sorted(list(set(symptom2_options)))
-    symptom2 = st.selectbox("Symptom 2", [None] + symptom2_options)
-    if symptom2:
-        selected_symptoms.append(symptom2)
-else:
-    symptom2 = None
+    # Collect unique symptoms
+    all_symptoms = set()
+    for col in symptom_cols:
+        if col in symptoms_df.columns:
+            all_symptoms.update([str(s).strip() for s in symptoms_df[col].dropna().unique() if str(s).strip()])
+    all_symptoms = sorted(list(all_symptoms))
 
-# Filter dataset for Symptom 3 based on previous selections
-if selected_symptoms:
-    filtered_df = symptoms_df.copy()
-    for i, sym in enumerate(selected_symptoms):
-        if i < len(symptom_cols):
-            filtered_df = filtered_df[filtered_df[symptom_cols[i]] == sym]
-    symptom3_options = []
-    if len(symptom_cols) > 2:
-        for col in symptom_cols[2:]:
-            symptom3_options.extend(filtered_df[col].dropna().unique())
-    symptom3_options = sorted(list(set(symptom3_options)))
-    symptom3 = st.selectbox("Symptom 3", [None] + symptom3_options)
-    if symptom3:
-        selected_symptoms.append(symptom3)
-else:
-    symptom3 = None
+    # Binary feature matrix
+    X = pd.DataFrame(0, index=symptoms_df.index, columns=all_symptoms)
+    for idx, row in symptoms_df.iterrows():
+        for col in symptom_cols:
+            if col in symptoms_df.columns:
+                sym = str(row[col]).strip()
+                if sym and sym in all_symptoms:
+                    X.at[idx, sym] = 1
+    y = symptoms_df[disease_col]
 
-# Filter dataset for Symptom 4 based on previous selections
-if selected_symptoms:
-    filtered_df = symptoms_df.copy()
-    for i, sym in enumerate(selected_symptoms):
-        if i < len(symptom_cols):
-            filtered_df = filtered_df[filtered_df[symptom_cols[i]] == sym]
-    symptom4_options = []
-    if len(symptom_cols) > 3:
-        for col in symptom_cols[3:]:
-            symptom4_options.extend(filtered_df[col].dropna().unique())
-    symptom4_options = sorted(list(set(symptom4_options)))
-    symptom4 = st.selectbox("Symptom 4", [None] + symptom4_options)
-    if symptom4:
-        selected_symptoms.append(symptom4)
-else:
-    symptom4 = None
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # Train Random Forest
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X_train, y_train)
+
+    return clf, all_symptoms, symptom_cols, disease_col, X
 
 # ----------------------------
 # Load data and train model
@@ -91,15 +68,26 @@ clf, all_symptoms, symptom_cols, disease_col, X = train_model(symptoms_df)
 # Prediction function
 # ----------------------------
 def predict_disease(user_symptoms):
+    filtered_df = symptoms_df.copy()
+    for i, sym in enumerate(user_symptoms):
+        if i < len(symptom_cols):
+            filtered_df = filtered_df[filtered_df[symptom_cols[i]] == sym]
+
+    # Build input vector for prediction
     input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
     for sym in user_symptoms:
         sym_str = str(sym).strip()
         if sym_str in all_symptoms:
             input_vector[sym_str] = 1
-    prediction = clf.predict(input_vector)[0]
-    probabilities = clf.predict_proba(input_vector)[0]
-    top_3 = sorted(zip(clf.classes_, probabilities), key=lambda x: x[1], reverse=True)[:3]
-    return prediction, top_3
+
+    # Predict probabilities only for diseases in filtered_df
+    possible_diseases = filtered_df['Disease'].unique()
+    all_probs = clf.predict_proba(input_vector)[0]
+    disease_probs = dict(zip(clf.classes_, all_probs))
+    disease_probs_filtered = {d: disease_probs[d] for d in possible_diseases if d in disease_probs}
+    top_3 = sorted(disease_probs_filtered.items(), key=lambda x: x[1], reverse=True)[:3]
+    predicted_disease = top_3[0][0] if top_3 else "No match found"
+    return predicted_disease, top_3
 
 # ----------------------------
 # Recommendations function
@@ -134,22 +122,66 @@ def get_recommendations(disease):
     }
 
 # ----------------------------
-# Streamlit cascading symptom selection
+# Cascading symptom selection
 # ----------------------------
 selected_symptoms = []
-col1, col2 = st.columns(2)
-with col1:
-    symptom1 = st.selectbox("Symptom 1", [None]+all_symptoms)
-with col2:
-    symptom2 = st.selectbox("Symptom 2", [None]+all_symptoms)
 
-symptom3 = st.selectbox("Symptom 3", [None]+all_symptoms)
-symptom4 = st.selectbox("Symptom 4", [None]+all_symptoms)
+# Symptom 1
+symptom1 = st.selectbox("Symptom 1", [None] + sorted(symptoms_df[symptom_cols[0]].dropna().unique()))
+if symptom1:
+    selected_symptoms.append(symptom1)
 
-for s in [symptom1, symptom2, symptom3, symptom4]:
-    if s is not None:
-        selected_symptoms.append(s)
+# Symptom 2
+if symptom1:
+    filtered_df = symptoms_df[symptoms_df[symptom_cols[0]] == symptom1]
+    symptom2_options = []
+    if len(symptom_cols) > 1:
+        for col in symptom_cols[1:]:
+            symptom2_options.extend(filtered_df[col].dropna().unique())
+    symptom2_options = sorted(list(set(symptom2_options)))
+    symptom2 = st.selectbox("Symptom 2", [None] + symptom2_options)
+    if symptom2:
+        selected_symptoms.append(symptom2)
+else:
+    symptom2 = None
 
+# Symptom 3
+if selected_symptoms:
+    filtered_df = symptoms_df.copy()
+    for i, sym in enumerate(selected_symptoms):
+        if i < len(symptom_cols):
+            filtered_df = filtered_df[filtered_df[symptom_cols[i]] == sym]
+    symptom3_options = []
+    if len(symptom_cols) > 2:
+        for col in symptom_cols[2:]:
+            symptom3_options.extend(filtered_df[col].dropna().unique())
+    symptom3_options = sorted(list(set(symptom3_options)))
+    symptom3 = st.selectbox("Symptom 3", [None] + symptom3_options)
+    if symptom3:
+        selected_symptoms.append(symptom3)
+else:
+    symptom3 = None
+
+# Symptom 4
+if selected_symptoms:
+    filtered_df = symptoms_df.copy()
+    for i, sym in enumerate(selected_symptoms):
+        if i < len(symptom_cols):
+            filtered_df = filtered_df[filtered_df[symptom_cols[i]] == sym]
+    symptom4_options = []
+    if len(symptom_cols) > 3:
+        for col in symptom_cols[3:]:
+            symptom4_options.extend(filtered_df[col].dropna().unique())
+    symptom4_options = sorted(list(set(symptom4_options)))
+    symptom4 = st.selectbox("Symptom 4", [None] + symptom4_options)
+    if symptom4:
+        selected_symptoms.append(symptom4)
+else:
+    symptom4 = None
+
+# ----------------------------
+# Predict button
+# ----------------------------
 if st.button("Predict Disease"):
     if len(selected_symptoms) == 0:
         st.warning("Please select at least one symptom.")
@@ -170,5 +202,3 @@ if st.button("Predict Disease"):
         st.write(recommendations['Precautions'])
         st.subheader("Workout Tips")
         st.write(recommendations['Workouts'])
-
-
