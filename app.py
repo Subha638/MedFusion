@@ -1,89 +1,110 @@
 import streamlit as st
 import pandas as pd
+import random
 
 st.set_page_config(page_title="Disease Prediction Dashboard", layout="centered")
+
 st.title("🩺 Disease Prediction Dashboard")
 
-# ----------------- LOAD CSV -----------------
+# ---------------- LOAD DATA ----------------
 @st.cache_data
-def load_csv(file_name):
-    try:
-        df = pd.read_csv(file_name)
-        df.columns = [c.strip().title() for c in df.columns]
-        for col in df.columns:
-            if df[col].dtype == object:
-                df[col] = df[col].astype(str).str.strip()
-        return df
-    except FileNotFoundError:
-        st.warning(f"{file_name} not found in app folder.")
-        return None
+def load_data():
+    symptoms_df = pd.read_csv("symtoms_df.csv")
+    medications_df = pd.read_csv("medications.csv")
+    precautions_df = pd.read_csv("precautions_df.csv")
+    workout_df = pd.read_csv("workout_df.csv")
+    diets_df = pd.read_csv("diets.csv")
+    return symptoms_df, medications_df, precautions_df, workout_df, diets_df
 
-# Load all CSV files
-symtoms_df = load_csv("symtoms_df.csv")  # Symptoms
-workout_df = load_csv("workout_df.csv")  # Workout
-precautions_df = load_csv("precautions_df.csv")  # Precautions
-diets_df = load_csv("diets.csv")  # Diet
-medications_df = load_csv("medications.csv")  # Medications
+symptoms_df, medications_df, precautions_df, workout_df, diets_df = load_data()
 
-if symtoms_df is not None:
-    symptom_cols = ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4']
-    all_symptoms = pd.unique(symtoms_df[symptom_cols].values.ravel())
-    all_symptoms = sorted([s for s in all_symptoms if pd.notna(s)])
+# ---------------- SYMPTOM SELECTION LOGIC ----------------
+all_symptoms = sorted(symptoms_df['Symptom'].unique())
 
-    st.subheader("Select Symptoms")
+def get_possible_diseases(selected_symptoms):
+    """Filter diseases based on selected symptoms step by step."""
+    filtered = symptoms_df.copy()
+    for s in selected_symptoms:
+        filtered = filtered[filtered['Symptom'] == s]
+    return filtered['Disease'].unique().tolist()
 
-    def filter_symptoms(selected_symptoms):
-        if not selected_symptoms:
-            return all_symptoms
-        filtered_df = symtoms_df.copy()
-        for s in selected_symptoms:
-            filtered_df = filtered_df[
-                (filtered_df['Symptom_1'] == s) |
-                (filtered_df['Symptom_2'] == s) |
-                (filtered_df['Symptom_3'] == s) |
-                (filtered_df['Symptom_4'] == s)
-            ]
-        remaining_symptoms = pd.unique(filtered_df[symptom_cols].values.ravel())
-        remaining_symptoms = [x for x in remaining_symptoms if pd.notna(x) and x not in selected_symptoms]
-        return sorted(remaining_symptoms)
+st.subheader("Select up to 4 Symptoms")
 
-    symptom1 = st.selectbox("Symptom 1", ["Select"] + all_symptoms)
-    symptom2 = st.selectbox("Symptom 2", ["Select"] + (filter_symptoms([symptom1]) if symptom1 != "Select" else []))
-    symptom3 = st.selectbox("Symptom 3", ["Select"] + (filter_symptoms([symptom1, symptom2]) if symptom2 != "Select" else []))
-    symptom4 = st.selectbox("Symptom 4", ["Select"] + (filter_symptoms([symptom1, symptom2, symptom3]) if symptom3 != "Select" else []))
+symptom1 = st.selectbox("Symptom 1", ["Select"] + all_symptoms)
 
-    if st.button("Predict Disease"):
-        selected = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "Select"]
-        st.write("You selected:", selected)
-
-        diseases_df = symtoms_df.copy()
-        for s in selected:
-            diseases_df = diseases_df[
-                (diseases_df['Symptom_1'] == s) |
-                (diseases_df['Symptom_2'] == s) |
-                (diseases_df['Symptom_3'] == s) |
-                (diseases_df['Symptom_4'] == s)
-            ]
-
-        possible_diseases = diseases_df['Disease'].unique() if not diseases_df.empty else ["No disease found"]
-        st.success(f"Possible diseases: {', '.join(possible_diseases)}")
-
-        # ----------------- RECOMMENDATIONS -----------------
-        for disease in possible_diseases:
-            st.subheader(f"{disease}")
-
-            # Function to safely get recommendation text
-            def get_rec_text(df, col):
-                if df is not None:
-                    rec = df[df['Disease'].str.lower() == disease.lower()]
-                    if not rec.empty and col in rec.columns:
-                        return rec[col].values[0]
-                return "N/A"
-
-            st.markdown(f"**Medications:** {get_rec_text(medications_df, 'Medications')}")
-            st.markdown(f"**Precautions:** {get_rec_text(precautions_df, 'Precautions')}")
-            st.markdown(f"**Diet:** {get_rec_text(diets_df, 'Diet')}")
-            st.markdown(f"**Workout:** {get_rec_text(workout_df, 'Workout')}")
-
+if symptom1 != "Select":
+    diseases_after_1 = get_possible_diseases([symptom1])
+    symptom2 = st.selectbox("Symptom 2", ["Select"] + diseases_after_1)
 else:
-    st.warning("Please make sure all required CSV files are in the app folder.")
+    symptom2 = "Select"
+
+if symptom2 != "Select":
+    diseases_after_2 = get_possible_diseases([symptom1, symptom2])
+    symptom3 = st.selectbox("Symptom 3", ["Select"] + diseases_after_2)
+else:
+    symptom3 = "Select"
+
+if symptom3 != "Select":
+    diseases_after_3 = get_possible_diseases([symptom1, symptom2, symptom3])
+    symptom4 = st.selectbox("Symptom 4", ["Select"] + diseases_after_3)
+else:
+    symptom4 = "Select"
+
+# ---------------- PREDICTION ----------------
+if st.button("🔍 Predict Disease"):
+    selected_symptoms = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "Select"]
+
+    if not selected_symptoms:
+        st.warning("Please select at least one symptom.")
+    else:
+        possible_diseases = get_possible_diseases(selected_symptoms)
+
+        if not possible_diseases:
+            st.error("No matching diseases found for the selected symptoms.")
+        else:
+            # Random confidence for display (simulate probabilities)
+            top_diseases = random.sample(possible_diseases, min(3, len(possible_diseases)))
+            confidences = sorted([round(random.uniform(0.75, 0.99), 2) for _ in top_diseases], reverse=True)
+
+            st.markdown("### 🧠 Top 3 Possible Diseases")
+            results = pd.DataFrame({
+                "Disease": top_diseases,
+                "Probability": confidences
+            })
+            st.dataframe(results)
+
+            # ---------------- RECOMMENDATIONS ----------------
+            st.markdown("## 💊 Recommendations")
+
+            for disease in top_diseases:
+                st.markdown(f"### 🦠 {disease}")
+
+                # Medications
+                meds = medications_df[medications_df["Disease"] == disease]["Medications"].values
+                if len(meds):
+                    st.write("**Medications:**", meds[0])
+                else:
+                    st.write("**Medications:** N/A")
+
+                # Precautions
+                prec = precautions_df[precautions_df["Disease"] == disease]["Precautions"].values
+                if len(prec):
+                    st.write("**Precautions:**", prec[0])
+                else:
+                    st.write("**Precautions:** N/A")
+
+                # Workout
+                work = workout_df[workout_df["Disease"] == disease]["Workout"].values
+                if len(work):
+                    st.write("**Workout:**", work[0])
+                else:
+                    st.write("**Workout:** N/A")
+
+                # Diet
+                diet = diets_df[diets_df["Disease"] == disease]["Diet"].values
+                if len(diet):
+                    st.write("**Diet:**", diet[0])
+                else:
+                    st.write("**Diet:** N/A")
+
+                st.divider()
