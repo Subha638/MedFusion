@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import random
+import os
 
 st.set_page_config(page_title="Disease Prediction Dashboard", layout="centered")
 
@@ -9,21 +10,22 @@ st.title("🩺 Disease Prediction Dashboard")
 # ---------------- LOAD DATA ----------------
 @st.cache_data
 def load_data():
-    symptoms_df = pd.read_csv("symptoms_df.csv")
-    medications_df = pd.read_csv("medications_df.csv")
+    symtoms_df = pd.read_csv("symtoms_df.csv")
+    medications_df = pd.read_csv("medications.csv")
     precautions_df = pd.read_csv("precautions_df.csv")
     workout_df = pd.read_csv("workout_df.csv")
-    diets_df = pd.read_csv("diets_df.csv")
-    return symptoms_df, medications_df, precautions_df, workout_df, diets_df
+    diets_df = pd.read_csv("diets.csv")
+    return symtoms_df, medications_df, precautions_df, workout_df, diets_df
 
-symptoms_df, medications_df, precautions_df, workout_df, diets_df = load_data()
+
+symtoms_df, medications_df, precautions_df, workout_df, diets_df = load_data()
 
 # ---------------- SYMPTOM SELECTION LOGIC ----------------
-all_symptoms = sorted(symptoms_df['Symptom'].unique())
+all_symptoms = sorted(symtoms_df['Symptom'].unique())
 
 def get_possible_diseases(selected_symptoms):
     """Filter diseases based on selected symptoms step by step."""
-    filtered = symptoms_df.copy()
+    filtered = symtoms_df.copy()
     for s in selected_symptoms:
         filtered = filtered[filtered['Symptom'] == s]
     return filtered['Disease'].unique().tolist()
