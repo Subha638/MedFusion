@@ -19,7 +19,7 @@ def load_data():
 # ----------------------------
 @st.cache_resource
 def load_model():
-    clf = joblib.load("disease_prediction_model.joblib")
+    clf = joblib.load("trained_disease_model.joblib")
     # Assuming model was trained with these symptom names
     symptoms_df = pd.read_csv("symtoms_df.csv")
     symptom_cols = [col for col in symptoms_df.columns if "Symptom" in col]
@@ -119,4 +119,5 @@ if st.button("Predict Disease"):
         st.write(recommendations['Medications'])
         st.subheader("Precautions")
         st.write(recommendations['Precautions'])
+
 
