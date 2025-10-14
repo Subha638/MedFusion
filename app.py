@@ -50,30 +50,23 @@ def train_model(symptoms_df):
     return clf, all_symptoms, symptom_cols
 
 # ----------------------------
-# Predict disease
+# Predict disease (always show top 3)
 # ----------------------------
 def predict_disease(user_symptoms, symptoms_df, clf, all_symptoms, symptom_cols):
-    # Filter diseases based on selected symptoms
-    filtered_df = symptoms_df.copy()
-    for i, sym in enumerate(user_symptoms):
-        if i < len(symptom_cols):
-            filtered_df = filtered_df[filtered_df[symptom_cols[i]] == sym]
-
-    if filtered_df.empty:
-        return "No match found", []
-
     # Build input vector for prediction
     input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
     for sym in user_symptoms:
         if sym in all_symptoms:
             input_vector[sym] = 1
 
-    # Predict probabilities
+    # Predict probabilities for all diseases
     all_probs = clf.predict_proba(input_vector)[0]
     disease_probs = dict(zip(clf.classes_, all_probs))
-    disease_probs_filtered = {d: disease_probs[d] for d in filtered_df['Disease'].unique() if d in disease_probs}
-    top_3 = sorted(disease_probs_filtered.items(), key=lambda x: x[1], reverse=True)[:3]
+
+    # Sort by probability and take top 3
+    top_3 = sorted(disease_probs.items(), key=lambda x: x[1], reverse=True)[:3]
     predicted_disease = top_3[0][0] if top_3 else "No match found"
+
     return predicted_disease, top_3
 
 # ----------------------------
