@@ -1,8 +1,7 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+import joblib
 
 # ----------------------------
 # Load CSVs
@@ -13,46 +12,30 @@ def load_data():
     diets_df = pd.read_csv("diets.csv")
     medications_df = pd.read_csv("medications.csv")
     precautions_df = pd.read_csv("precautions_df.csv")
-    workout_df = pd.read_csv("workout_df.csv")
-    return symptoms_df, diets_df, medications_df, precautions_df, workout_df
+    return symptoms_df, diets_df, medications_df, precautions_df
 
 # ----------------------------
-# Train model
+# Load trained model
 # ----------------------------
 @st.cache_resource
-def train_model(symptoms_df):
+def load_model():
+    clf = joblib.load("trained_disease_model.joblib")
+    # Assuming model was trained with these symptom names
+    symptoms_df = pd.read_csv("symtoms_df.csv")
     symptom_cols = [col for col in symptoms_df.columns if "Symptom" in col]
-    disease_col = "Disease"
 
-    # Clean data
-    symptoms_df = symptoms_df.dropna(subset=[disease_col])
-    symptoms_df[disease_col] = symptoms_df[disease_col].astype(str).str.strip()
-
-    # Collect unique symptoms
+    # Collect all unique symptoms used in training
     all_symptoms = set()
     for col in symptom_cols:
         all_symptoms.update([str(s).strip() for s in symptoms_df[col].dropna().unique()])
     all_symptoms = sorted(list(all_symptoms))
-
-    # Binary feature matrix
-    X = pd.DataFrame(0, index=symptoms_df.index, columns=all_symptoms)
-    for idx, row in symptoms_df.iterrows():
-        for col in symptom_cols:
-            sym = str(row[col]).strip()
-            if sym in all_symptoms:
-                X.at[idx, sym] = 1
-    y = symptoms_df[disease_col]
-
-    # Train Random Forest
-    clf = RandomForestClassifier(n_estimators=100, random_state=42)
-    clf.fit(X, y)
 
     return clf, all_symptoms, symptom_cols
 
 # ----------------------------
 # Predict disease (always show top 3)
 # ----------------------------
-def predict_disease(user_symptoms, symptoms_df, clf, all_symptoms, symptom_cols):
+def predict_disease(user_symptoms, clf, all_symptoms):
     # Build input vector for prediction
     input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
     for sym in user_symptoms:
@@ -70,9 +53,9 @@ def predict_disease(user_symptoms, symptoms_df, clf, all_symptoms, symptom_cols)
     return predicted_disease, top_3
 
 # ----------------------------
-# Get recommendations
+# Get recommendations (without workouts)
 # ----------------------------
-def get_recommendations(disease, diets_df, medications_df, precautions_df, workout_df):
+def get_recommendations(disease, diets_df, medications_df, precautions_df):
     # Diet
     diet_row = diets_df[diets_df['Disease'] == disease]
     diet = diet_row['Diet'].iloc[0] if not diet_row.empty else ["No data available"]
@@ -90,28 +73,21 @@ def get_recommendations(disease, diets_df, medications_df, precautions_df, worko
     else:
         precautions = ["No data available"]
 
-    # Workouts
-    workout_rows = workout_df[workout_df['disease'] == disease]
-    workouts = [str(w).strip() for w in workout_rows['workout'].tolist()] if not workout_rows.empty else ["No data available"]
-
     return {
         'Diet': diet,
         'Medications': meds,
-        'Precautions': precautions[:4],
-        'Workouts': workouts[:5]
+        'Precautions': precautions[:4]
     }
 
 # ----------------------------
 # Streamlit UI
 # ----------------------------
-
 st.title("Welcome to MedFusion")
+st.markdown("Select symptoms to predict possible disease 🤒 and get recommendations.")
 
-st.markdown("Select symptoms to predict possible disease:sneezing_face: and get recommendations.")
-
-# Load data and train model
-symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
-clf, all_symptoms, symptom_cols = train_model(symptoms_df)
+# Load data and trained model
+symptoms_df, diets_df, medications_df, precautions_df = load_data()
+clf, all_symptoms, symptom_cols = load_model()
 
 # Cascading symptom selection dynamically
 selected_symptoms = []
@@ -129,22 +105,17 @@ if st.button("Predict Disease"):
     if not selected_symptoms:
         st.warning("Please select at least one symptom.")
     else:
-        predicted_disease, top_3 = predict_disease(selected_symptoms, symptoms_df, clf, all_symptoms, symptom_cols)
+        predicted_disease, top_3 = predict_disease(selected_symptoms, clf, all_symptoms)
         st.success(f"Predicted Disease: {predicted_disease}")
 
         st.subheader("Top 3 probable diseases:")
         for d, p in top_3:
             st.write(f"{d}: {p:.2f}")
 
-        recommendations = get_recommendations(predicted_disease, diets_df, medications_df, precautions_df, workout_df)
+        recommendations = get_recommendations(predicted_disease, diets_df, medications_df, precautions_df)
         st.subheader("Diet Recommendations")
         st.write(recommendations['Diet'])
         st.subheader("Medication Recommendations")
         st.write(recommendations['Medications'])
         st.subheader("Precautions")
         st.write(recommendations['Precautions'])
-        st.subheader("Workout Tips")
-        st.write(recommendations['Workouts'])
-
-
-
