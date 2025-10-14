@@ -1,118 +1,98 @@
 import streamlit as st
 import pandas as pd
-import random
-import os
+import numpy as np
 
-st.set_page_config(page_title="🩺 Disease Prediction Dashboard", layout="centered")
-st.title("🩺 Disease Prediction Dashboard")
+st.set_page_config(page_title="MedFusion - Disease Predictor", layout="wide")
 
-# ---------------- LOAD DATA ----------------
+# ---------- Load Data ----------
 @st.cache_data
 def load_data():
-    symtoms_df = pd.read_csv("symtoms_df.csv")
-    medications_df = pd.read_csv("medications.csv")
-    precautions_df = pd.read_csv("precautions_df.csv")
+    sym_df = pd.read_csv("symtoms_df.csv")
     workout_df = pd.read_csv("workout_df.csv")
-    diets_df = pd.read_csv("diets.csv")
+    diet_df = pd.read_csv("diets.csv")
+    med_df = pd.read_csv("medications.csv")
+    pre_df = pd.read_csv("precautions_df.csv")
+    return sym_df, workout_df, diet_df, med_df, pre_df
 
-    # Reshape symptom data if needed
-    symptom_cols = [col for col in symtoms_df.columns if "symptom" in col.lower()]
-    melted_df = symtoms_df.melt(
-        id_vars=["Disease"],
-        value_vars=symptom_cols,
-        var_name="SymptomType",
-        value_name="Symptom"
-    ).dropna()
-    melted_df["Symptom"] = melted_df["Symptom"].str.strip().str.lower()
+symtoms_df, workout_df, diets_df, medications_df, precautions_df = load_data()
 
-    return melted_df, medications_df, precautions_df, workout_df, diets_df
+# Normalize column names
+symtoms_df.columns = [col.strip().title() for col in symtoms_df.columns]
+medications_df.columns = [col.strip().title() for col in medications_df.columns]
+precautions_df.columns = [col.strip().title() for col in precautions_df.columns]
+diets_df.columns = [col.strip().title() for col in diets_df.columns]
+workout_df.columns = [col.strip().title() for col in workout_df.columns]
 
+# ---------- Title ----------
+st.title("🧠 MedFusion - Smart Disease Predictor")
+st.write("Select up to 4 symptoms to predict the most likely diseases and get recommendations.")
 
-symtoms_df, medications_df, precautions_df, workout_df, diets_df = load_data()
+# ---------- Step 1: Symptom 1 ----------
+all_symptoms = sorted(symtoms_df['Symptom'].unique())
+symptom1 = st.selectbox("🩺 Symptom 1", [""] + all_symptoms)
 
-# All unique symptoms
-all_symptoms = sorted(symtoms_df["Symptom"].unique())
-
-# ---------------- FUNCTIONS ----------------
-def diseases_with_symptom(symptoms):
-    """Return diseases that have all selected symptoms."""
-    df = symtoms_df
-    for s in symptoms:
-        df = df[df["Disease"].isin(df[df["Symptom"] == s]["Disease"])]
-    return df["Disease"].unique().tolist()
-
-def next_possible_symptoms(selected_symptoms):
-    """Return next symptoms possible for diseases with selected symptoms."""
-    diseases = diseases_with_symptom(selected_symptoms)
-    if not diseases:
+# ---------- Step 2–4: Dynamic Symptom Filtering ----------
+def get_next_symptoms(selected_symptom, prev=[]):
+    """Return possible next symptoms based on previous selections."""
+    if not selected_symptom:
         return []
-    possible = symtoms_df[symtoms_df["Disease"].isin(diseases)]["Symptom"].unique().tolist()
-    return sorted([s for s in possible if s not in selected_symptoms])
+    related = symtoms_df[symtoms_df['Symptom'] == selected_symptom]['Disease'].unique()
+    next_sym = symtoms_df[symtoms_df['Disease'].isin(related)]['Symptom'].unique()
+    next_sym = [s for s in next_sym if s not in prev]
+    return sorted(next_sym)
 
-def predict_disease(selected_symptoms):
-    """Simple heuristic: rank by symptom overlap"""
-    disease_scores = {}
-    for disease in symtoms_df["Disease"].unique():
-        disease_symptoms = symtoms_df[symtoms_df["Disease"] == disease]["Symptom"].tolist()
-        overlap = len(set(selected_symptoms) & set(disease_symptoms))
-        if overlap > 0:
-            disease_scores[disease] = overlap / len(disease_symptoms)
-    sorted_diseases = sorted(disease_scores.items(), key=lambda x: x[1], reverse=True)
-    return sorted_diseases[:3]
+symptom2 = ""
+symptom3 = ""
+symptom4 = ""
 
-# ---------------- STREAMLIT UI ----------------
-st.subheader("Select up to 4 Symptoms")
+if symptom1:
+    possible2 = get_next_symptoms(symptom1, [symptom1])
+    symptom2 = st.selectbox("🩺 Symptom 2", [""] + possible2)
 
-symptom1 = st.selectbox("Symptom 1", ["Select"] + all_symptoms)
+if symptom2:
+    possible3 = get_next_symptoms(symptom2, [symptom1, symptom2])
+    symptom3 = st.selectbox("🩺 Symptom 3", [""] + possible3)
 
-if symptom1 != "Select":
-    next_symptoms_1 = next_possible_symptoms([symptom1])
-    symptom2 = st.selectbox("Symptom 2", ["Select"] + next_symptoms_1)
-else:
-    symptom2 = "Select"
+if symptom3:
+    possible4 = get_next_symptoms(symptom3, [symptom1, symptom2, symptom3])
+    symptom4 = st.selectbox("🩺 Symptom 4", [""] + possible4)
 
-if symptom2 != "Select":
-    next_symptoms_2 = next_possible_symptoms([symptom1, symptom2])
-    symptom3 = st.selectbox("Symptom 3", ["Select"] + next_symptoms_2)
-else:
-    symptom3 = "Select"
+selected_symptoms = [s for s in [symptom1, symptom2, symptom3, symptom4] if s]
 
-if symptom3 != "Select":
-    next_symptoms_3 = next_possible_symptoms([symptom1, symptom2, symptom3])
-    symptom4 = st.selectbox("Symptom 4", ["Select"] + next_symptoms_3)
-else:
-    symptom4 = "Select"
+# ---------- Prediction Logic ----------
+if st.button("🔍 Predict Disease") and selected_symptoms:
+    matching_diseases = symtoms_df[symtoms_df["Symptom"].isin(selected_symptoms)]
+    disease_counts = matching_diseases["Disease"].value_counts()
 
-# ---------------- PREDICT ----------------
-if st.button("🔍 Predict Disease"):
-    selected = [s for s in [symptom1, symptom2, symptom3, symptom4] if s != "Select"]
-    if not selected:
-        st.warning("Please select at least one symptom.")
+    if not disease_counts.empty:
+        top3 = disease_counts.head(3)
+        st.subheader("🏥 Top 3 Possible Diseases")
+        for disease, count in top3.items():
+            prob = round((count / len(selected_symptoms)) * 100, 2)
+            st.markdown(f"**{disease}** — Probability: {prob}%")
+
+            # --- Fetch Recommendations Safely ---
+            def safe_lookup(df, col_disease="Disease", col_value="Medications"):
+                col_disease = next((c for c in df.columns if c.lower() == "disease"), None)
+                col_value = next((c for c in df.columns if col_value.lower() in c.lower()), None)
+                if col_disease and col_value:
+                    res = df.loc[df[col_disease] == disease, col_value]
+                    return res.values[0] if not res.empty else "N/A"
+                return "N/A"
+
+            meds = safe_lookup(medications_df, col_value="Medications")
+            precs = safe_lookup(precautions_df, col_value="Precautions")
+            diet = safe_lookup(diets_df, col_value="Diet")
+            work = safe_lookup(workout_df, col_value="Workout")
+
+            st.markdown(f"""
+            💊 **Medications:** {meds}  
+            ⚠️ **Precautions:** {precs}  
+            🥗 **Diet:** {diet}  
+            🏃 **Workout:** {work}
+            """)
+
     else:
-        top3 = predict_disease(selected)
-        if not top3:
-            st.error("No disease matches your selected symptoms.")
-        else:
-            st.success("Prediction complete!")
-            st.markdown("### 🧠 Top 3 Possible Diseases")
-            for disease, score in top3:
-                st.markdown(f"**{disease}** — Probability: {round(score*100,2)}%")
-
-                # Show recommendations
-                st.markdown("**💊 Medications:**")
-                meds = medications_df.loc[medications_df["Disease"] == disease, "Medications"]
-                st.write(meds.values[0] if not meds.empty else "N/A")
-
-                st.markdown("**⚠️ Precautions:**")
-                prec = precautions_df.loc[precautions_df["Disease"] == disease, "Precautions"]
-                st.write(prec.values[0] if not prec.empty else "N/A")
-
-                st.markdown("**🏃 Workout:**")
-                work = workout_df.loc[workout_df["Disease"] == disease, "Workout"]
-                st.write(work.values[0] if not work.empty else "N/A")
-
-                st.markdown("**🥗 Diet:**")
-                diet = diets_df.loc[diets_df["Disease"] == disease, "Diet"]
-                st.write(diet.values[0] if not diet.empty else "N/A")
-
-                st.divider()
+        st.error("No matching diseases found for selected symptoms.")
+else:
+    st.info("Please select at least one symptom to predict.")
