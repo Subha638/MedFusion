@@ -104,7 +104,14 @@ def get_recommendations(disease, diets_df, medications_df, precautions_df, worko
 # ----------------------------
 # Streamlit UI
 # ----------------------------
-st.title("Disease Prediction App")
+st.markdown("""
+<h1 style='text-align: center; color: #2E86C1;'>🩺 MedFusion</h1>
+<hr>
+<p style='text-align: center; font-size:18px; color:#566573;'><em>“Predict, Prevent, and Personalize your Health Care”</em></p>
+""", unsafe_allow_html=True)
+
+st.title("Welcome to MedFusion")
+st.markdown("
 st.markdown("Select symptoms to predict possible disease and get recommendations.")
 
 # Load data and train model
@@ -143,3 +150,4 @@ if st.button("Predict Disease"):
         st.write(recommendations['Precautions'])
         st.subheader("Workout Tips")
         st.write(recommendations['Workouts'])
+
