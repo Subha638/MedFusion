@@ -15,20 +15,28 @@ def load_data():
     precautions_df = pd.read_csv("precautions_df.csv")
     workout_df = pd.read_csv("workout_df.csv")
     diets_df = pd.read_csv("diets.csv")
+
+    # Normalize symptoms dataframe structure
+    # if it has columns like Symptom_1, Symptom_2, Symptom_3...
+    if not "Symptom" in symtoms_df.columns:
+        symptom_cols = [col for col in symtoms_df.columns if "symptom" in col.lower()]
+        if symptom_cols:
+            symtoms_df = symtoms_df.melt(id_vars=["Disease"], value_vars=symptom_cols,
+                                         var_name="SymptomType", value_name="Symptom").dropna()
     return symtoms_df, medications_df, precautions_df, workout_df, diets_df
 
 
 symtoms_df, medications_df, precautions_df, workout_df, diets_df = load_data()
 
 # ---------------- SYMPTOM SELECTION LOGIC ----------------
-all_symptoms = sorted(symtoms_df['Symptom'].unique())
+all_symptoms = sorted(symtoms_df['Symptom'].dropna().unique())
 
 def get_possible_diseases(selected_symptoms):
-    """Filter diseases based on selected symptoms step by step."""
-    filtered = symtoms_df.copy()
+    """Filter diseases that contain all selected symptoms."""
+    df = symtoms_df
     for s in selected_symptoms:
-        filtered = filtered[filtered['Symptom'] == s]
-    return filtered['Disease'].unique().tolist()
+        df = df[df['Symptom'] == s]
+    return df['Disease'].unique().tolist()
 
 st.subheader("Select up to 4 Symptoms")
 
@@ -36,19 +44,22 @@ symptom1 = st.selectbox("Symptom 1", ["Select"] + all_symptoms)
 
 if symptom1 != "Select":
     diseases_after_1 = get_possible_diseases([symptom1])
-    symptom2 = st.selectbox("Symptom 2", ["Select"] + diseases_after_1)
+    next_symptoms = symtoms_df[symtoms_df['Disease'].isin(diseases_after_1)]['Symptom'].unique().tolist()
+    symptom2 = st.selectbox("Symptom 2", ["Select"] + sorted(next_symptoms))
 else:
     symptom2 = "Select"
 
 if symptom2 != "Select":
     diseases_after_2 = get_possible_diseases([symptom1, symptom2])
-    symptom3 = st.selectbox("Symptom 3", ["Select"] + diseases_after_2)
+    next_symptoms = symtoms_df[symtoms_df['Disease'].isin(diseases_after_2)]['Symptom'].unique().tolist()
+    symptom3 = st.selectbox("Symptom 3", ["Select"] + sorted(next_symptoms))
 else:
     symptom3 = "Select"
 
 if symptom3 != "Select":
     diseases_after_3 = get_possible_diseases([symptom1, symptom2, symptom3])
-    symptom4 = st.selectbox("Symptom 4", ["Select"] + diseases_after_3)
+    next_symptoms = symtoms_df[symtoms_df['Disease'].isin(diseases_after_3)]['Symptom'].unique().tolist()
+    symptom4 = st.selectbox("Symptom 4", ["Select"] + sorted(next_symptoms))
 else:
     symptom4 = "Select"
 
@@ -64,7 +75,7 @@ if st.button("🔍 Predict Disease"):
         if not possible_diseases:
             st.error("No matching diseases found for the selected symptoms.")
         else:
-            # Random confidence for display (simulate probabilities)
+            # Simulated probabilities (you can replace later with ML)
             top_diseases = random.sample(possible_diseases, min(3, len(possible_diseases)))
             confidences = sorted([round(random.uniform(0.75, 0.99), 2) for _ in top_diseases], reverse=True)
 
@@ -83,30 +94,18 @@ if st.button("🔍 Predict Disease"):
 
                 # Medications
                 meds = medications_df[medications_df["Disease"] == disease]["Medications"].values
-                if len(meds):
-                    st.write("**Medications:**", meds[0])
-                else:
-                    st.write("**Medications:** N/A")
+                st.write("**Medications:**", meds[0] if len(meds) else "N/A")
 
                 # Precautions
                 prec = precautions_df[precautions_df["Disease"] == disease]["Precautions"].values
-                if len(prec):
-                    st.write("**Precautions:**", prec[0])
-                else:
-                    st.write("**Precautions:** N/A")
+                st.write("**Precautions:**", prec[0] if len(prec) else "N/A")
 
                 # Workout
                 work = workout_df[workout_df["Disease"] == disease]["Workout"].values
-                if len(work):
-                    st.write("**Workout:**", work[0])
-                else:
-                    st.write("**Workout:** N/A")
+                st.write("**Workout:**", work[0] if len(work) else "N/A")
 
                 # Diet
                 diet = diets_df[diets_df["Disease"] == disease]["Diet"].values
-                if len(diet):
-                    st.write("**Diet:**", diet[0])
-                else:
-                    st.write("**Diet:** N/A")
+                st.write("**Diet:**", diet[0] if len(diet) else "N/A")
 
                 st.divider()
