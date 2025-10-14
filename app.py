@@ -1,109 +1,151 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
 
-st.set_page_config(page_title="MedFusion - Disease Predictor", layout="wide")
-
-# ---------- Load Data ----------
+# ----------------------------
+# Caching function to load data
+# ----------------------------
 @st.cache_data
 def load_data():
-    sym_df = pd.read_csv("symtoms_df.csv")
+    # Load all CSVs from repo (must be committed)
+    symptoms_df = pd.read_csv("symptoms_df.csv")
+    diets_df = pd.read_csv("diets.csv")
+    medications_df = pd.read_csv("medications.csv")
+    precautions_df = pd.read_csv("precautions_df.csv")
     workout_df = pd.read_csv("workout_df.csv")
-    diet_df = pd.read_csv("diets.csv")
-    med_df = pd.read_csv("medications.csv")
-    pre_df = pd.read_csv("precautions_df.csv")
-    return sym_df, workout_df, diet_df, med_df, pre_df
+    return symptoms_df, diets_df, medications_df, precautions_df, workout_df
 
-symtoms_df, workout_df, diets_df, medications_df, precautions_df = load_data()
+# ----------------------------
+# Cache model training
+# ----------------------------
+@st.cache_resource
+def train_model(symptoms_df):
+    symptom_cols = [col for col in symptoms_df.columns if "Symptom" in col]
+    disease_col = "Disease"
 
-# ---------- Normalize Columns ----------
-def normalize_cols(df):
-    df.columns = df.columns.str.strip().str.lower()
-    return df
+    # Clean data
+    symptoms_df = symptoms_df.dropna(subset=[disease_col])
+    symptoms_df[disease_col] = symptoms_df[disease_col].astype(str).str.strip()
 
-symtoms_df = normalize_cols(symtoms_df)
-workout_df = normalize_cols(workout_df)
-diets_df = normalize_cols(diets_df)
-medications_df = normalize_cols(medications_df)
-precautions_df = normalize_cols(precautions_df)
+    # Collect unique symptoms
+    all_symptoms = set()
+    for col in symptom_cols:
+        if col in symptoms_df.columns:
+            all_symptoms.update([str(s).strip() for s in symptoms_df[col].dropna().unique() if str(s).strip()])
+    all_symptoms = sorted(list(all_symptoms))
 
-# --- Auto-detect column names ---
-symptom_col = next((c for c in symtoms_df.columns if "symptom" in c.lower()), None)
-disease_col = next((c for c in symtoms_df.columns if "disease" in c.lower()), None)
+    # Binary feature matrix
+    X = pd.DataFrame(0, index=symptoms_df.index, columns=all_symptoms)
+    for idx, row in symptoms_df.iterrows():
+        for col in symptom_cols:
+            if col in symptoms_df.columns:
+                sym = str(row[col]).strip()
+                if sym and sym in all_symptoms:
+                    X.at[idx, sym] = 1
+    y = symptoms_df[disease_col]
 
-if not symptom_col or not disease_col:
-    st.error("❌ 'symtoms_df.csv' must contain columns for symptoms and diseases.")
-    st.stop()
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# ---------- Title ----------
-st.title("🧠 MedFusion - Smart Disease Predictor")
-st.write("Select up to 4 symptoms to predict the most likely diseases and get recommendations.")
+    # Train Random Forest
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X_train, y_train)
 
-# ---------- Step 1 ----------
-all_symptoms = sorted(symtoms_df[symptom_col].unique())
-symptom1 = st.selectbox("🩺 Symptom 1", [""] + all_symptoms)
+    return clf, all_symptoms, symptom_cols, disease_col, X
 
-# ---------- Helper Function ----------
-def get_next_symptoms(selected_symptom, prev=[]):
-    """Return possible next symptoms based on previous selections."""
-    if not selected_symptom:
-        return []
-    related = symtoms_df[symtoms_df[symptom_col] == selected_symptom][disease_col].unique()
-    next_sym = symtoms_df[symtoms_df[disease_col].isin(related)][symptom_col].unique()
-    next_sym = [s for s in next_sym if s not in prev]
-    return sorted(next_sym)
+# ----------------------------
+# Load data and train model
+# ----------------------------
+st.title("Disease Prediction App")
+st.markdown("Select symptoms to predict possible disease and get recommendations.")
 
-# ---------- Step 2–4 ----------
-symptom2 = symptom3 = symptom4 = ""
+symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
+clf, all_symptoms, symptom_cols, disease_col, X = train_model(symptoms_df)
 
-if symptom1:
-    possible2 = get_next_symptoms(symptom1, [symptom1])
-    symptom2 = st.selectbox("🩺 Symptom 2", [""] + possible2)
+# ----------------------------
+# Prediction function
+# ----------------------------
+def predict_disease(user_symptoms):
+    input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
+    for sym in user_symptoms:
+        sym_str = str(sym).strip()
+        if sym_str in all_symptoms:
+            input_vector[sym_str] = 1
+    prediction = clf.predict(input_vector)[0]
+    probabilities = clf.predict_proba(input_vector)[0]
+    top_3 = sorted(zip(clf.classes_, probabilities), key=lambda x: x[1], reverse=True)[:3]
+    return prediction, top_3
 
-if symptom2:
-    possible3 = get_next_symptoms(symptom2, [symptom1, symptom2])
-    symptom3 = st.selectbox("🩺 Symptom 3", [""] + possible3)
+# ----------------------------
+# Recommendations function
+# ----------------------------
+def get_recommendations(disease):
+    # Diet
+    diet_row = diets_df[diets_df['Disease'] == disease]
+    diet = diet_row['Diet'].iloc[0] if not diet_row.empty else ["No data available"]
 
-if symptom3:
-    possible4 = get_next_symptoms(symptom3, [symptom1, symptom2, symptom3])
-    symptom4 = st.selectbox("🩺 Symptom 4", [""] + possible4)
+    # Medication
+    med_row = medications_df[medications_df['Disease'] == disease]
+    meds = med_row['Medication'].iloc[0] if not med_row.empty else ["No data available"]
 
-selected_symptoms = [s for s in [symptom1, symptom2, symptom3, symptom4] if s]
-
-# ---------- Safe Column Lookup ----------
-def safe_lookup(df, disease_name, key_word):
-    df = normalize_cols(df)
-    disease_col = next((c for c in df.columns if "disease" in c.lower()), None)
-    value_col = next((c for c in df.columns if key_word.lower() in c.lower()), None)
-    if disease_col and value_col:
-        res = df.loc[df[disease_col] == disease_name, value_col]
-        return res.values[0] if not res.empty else "N/A"
-    return "N/A"
-
-# ---------- Prediction ----------
-if st.button("🔍 Predict Disease") and selected_symptoms:
-    matching = symtoms_df[symtoms_df[symptom_col].isin(selected_symptoms)]
-    counts = matching[disease_col].value_counts()
-
-    if not counts.empty:
-        st.subheader("🏥 Top 3 Possible Diseases")
-        top3 = counts.head(3)
-        for disease, count in top3.items():
-            prob = round((count / len(selected_symptoms)) * 100, 2)
-            st.markdown(f"**{disease}** — Probability: {prob}%")
-
-            meds = safe_lookup(medications_df, disease, "medication")
-            precs = safe_lookup(precautions_df, disease, "precaution")
-            diet = safe_lookup(diets_df, disease, "diet")
-            work = safe_lookup(workout_df, disease, "workout")
-
-            st.markdown(f"""
-            💊 **Medications:** {meds}  
-            ⚠️ **Precautions:** {precs}  
-            🥗 **Diet:** {diet}  
-            🏃 **Workout:** {work}
-            """)
+    # Precautions
+    prec_rows = precautions_df[precautions_df['Disease'] == disease]
+    if not prec_rows.empty:
+        prec_cols = [col for col in prec_rows.columns if 'Precaution' in col]
+        precautions = prec_rows[prec_cols].values.flatten()
+        precautions = [str(p).strip() for p in precautions if pd.notna(p) and str(p).strip() != '']
     else:
-        st.error("No matching diseases found.")
-else:
-    st.info("Please select at least one symptom to start prediction.")
+        precautions = ["No data available"]
+
+    # Workouts
+    workout_rows = workout_df[workout_df['disease'] == disease]
+    workouts = [str(w).strip() for w in workout_rows['workout'].tolist()] if not workout_rows.empty else ["No data available"]
+
+    return {
+        'Diet': diet,
+        'Medications': meds,
+        'Precautions': precautions[:4],
+        'Workouts': workouts[:5]
+    }
+
+# ----------------------------
+# Streamlit cascading symptom selection
+# ----------------------------
+selected_symptoms = []
+col1, col2 = st.columns(2)
+with col1:
+    symptom1 = st.selectbox("Symptom 1", [None]+all_symptoms)
+with col2:
+    symptom2 = st.selectbox("Symptom 2", [None]+all_symptoms)
+
+symptom3 = st.selectbox("Symptom 3", [None]+all_symptoms)
+symptom4 = st.selectbox("Symptom 4", [None]+all_symptoms)
+
+for s in [symptom1, symptom2, symptom3, symptom4]:
+    if s is not None:
+        selected_symptoms.append(s)
+
+if st.button("Predict Disease"):
+    if len(selected_symptoms) == 0:
+        st.warning("Please select at least one symptom.")
+    else:
+        predicted_disease, top_3 = predict_disease(selected_symptoms)
+        st.success(f"Predicted Disease: {predicted_disease}")
+
+        st.subheader("Top 3 probable diseases:")
+        for d, p in top_3:
+            st.write(f"{d}: {p:.2f}")
+
+        recommendations = get_recommendations(predicted_disease)
+        st.subheader("Diet Recommendations")
+        st.write(recommendations['Diet'])
+        st.subheader("Medication Recommendations")
+        st.write(recommendations['Medications'])
+        st.subheader("Precautions")
+        st.write(recommendations['Precautions'])
+        st.subheader("Workout Tips")
+        st.write(recommendations['Workouts'])
