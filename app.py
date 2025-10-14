@@ -11,12 +11,12 @@ from sklearn.metrics import accuracy_score, classification_report
 # ----------------------------
 @st.cache_data
 def load_data():
-    # Load all CSVs from repo (must be committed)
-    symptoms_df = pd.read_csv("symptoms_df.csv")
-    diets_df = pd.read_csv("diets.csv")
-    medications_df = pd.read_csv("medications.csv")
-    precautions_df = pd.read_csv("precautions_df.csv")
-    workout_df = pd.read_csv("workout_df.csv")
+    # Updated filenames
+    symptoms_df = pd.read_csv("symtoms_df.csv")        # corrected to 'symtoms_df.csv'
+    diets_df = pd.read_csv("diets.csv")                # 'diets.csv'
+    medications_df = pd.read_csv("medications.csv")    # 'medications.csv'
+    precautions_df = pd.read_csv("precautions_df.csv") # 'precautions_df.csv'
+    workout_df = pd.read_csv("workout_df.csv")         # 'workout_df.csv'
     return symptoms_df, diets_df, medications_df, precautions_df, workout_df
 
 # ----------------------------
@@ -149,3 +149,4 @@ if st.button("Predict Disease"):
         st.write(recommendations['Precautions'])
         st.subheader("Workout Tips")
         st.write(recommendations['Workouts'])
+
