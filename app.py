@@ -107,7 +107,7 @@ def get_recommendations(disease, diets_df, medications_df, precautions_df, worko
 
 st.title("Welcome to MedFusion")
 
-st.markdown("Select symptoms to predict possible disease and get recommendations.")
+st.markdown("Select symptoms to predict possible disease:sneezing_face: and get recommendations.")
 
 # Load data and train model
 symptoms_df, diets_df, medications_df, precautions_df, workout_df = load_data()
@@ -145,5 +145,6 @@ if st.button("Predict Disease"):
         st.write(recommendations['Precautions'])
         st.subheader("Workout Tips")
         st.write(recommendations['Workouts'])
+
 
 
