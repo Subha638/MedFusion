@@ -9,11 +9,11 @@ st.title("🩺 Disease Prediction Dashboard")
 # ---------------- LOAD DATA ----------------
 @st.cache_data
 def load_data():
-    symptoms_df = pd.read_csv("symtoms_df.csv")
-    medications_df = pd.read_csv("medications.csv")
+    symptoms_df = pd.read_csv("symptoms_df.csv")
+    medications_df = pd.read_csv("medications_df.csv")
     precautions_df = pd.read_csv("precautions_df.csv")
     workout_df = pd.read_csv("workout_df.csv")
-    diets_df = pd.read_csv("diets.csv")
+    diets_df = pd.read_csv("diets_df.csv")
     return symptoms_df, medications_df, precautions_df, workout_df, diets_df
 
 symptoms_df, medications_df, precautions_df, workout_df, diets_df = load_data()
