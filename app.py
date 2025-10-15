@@ -1,3 +1,4 @@
+*ML_APP.PY*
 # app.py
 import streamlit as st
 import pandas as pd
@@ -119,5 +120,3 @@ if st.button("Predict Disease"):
         st.write(recommendations['Medications'])
         st.subheader("Precautions")
         st.write(recommendations['Precautions'])
-
-
