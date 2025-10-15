@@ -141,5 +141,5 @@ if st.button("Predict Disease"):
         st.write(recommendations['Medications'])
         st.subheader("Precautions")
         st.write(recommendations['Precautions'])
-        st.subheader("Workout Tips")
-        st.write(recommendations['Workouts'])
+        
+
